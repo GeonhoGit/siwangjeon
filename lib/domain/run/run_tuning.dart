@@ -23,6 +23,9 @@ class RunTuning {
     this.guaranteedEliteDepth = 7,
     this.minBranchWidth = 2,
     this.maxBranchWidth = 3,
+    this.firstBranchWidth = 2,
+    this.lastBranchWidth = 2,
+    this.maxAdjacentSlotDistance = 1,
     this.firstBranchDepth = 1,
     this.lastBranchDepth = 13,
     this.nodeTypeWeights = const [
@@ -40,6 +43,14 @@ class RunTuning {
        assert(guaranteedEliteDepth < nodesPerAct - 1),
        assert(minBranchWidth > 1),
        assert(maxBranchWidth >= minBranchWidth),
+       assert(firstBranchWidth >= minBranchWidth),
+       assert(firstBranchWidth <= maxBranchWidth),
+       assert(lastBranchWidth >= minBranchWidth),
+       assert(lastBranchWidth <= maxBranchWidth),
+       assert(maxAdjacentSlotDistance > 0),
+       assert(maxBranchWidth - minBranchWidth <= maxAdjacentSlotDistance),
+       assert(firstBranchWidth <= maxAdjacentSlotDistance + 1),
+       assert(lastBranchWidth <= maxAdjacentSlotDistance + 1),
        assert(firstBranchDepth > 0),
        assert(lastBranchDepth >= firstBranchDepth),
        assert(lastBranchDepth < nodesPerAct - 1);
@@ -72,6 +83,16 @@ class RunTuning {
 
   /// 분기 깊이 하나에 encounter 수열로 뽑는 후보 노드 수의 상한.
   final int maxBranchWidth;
+
+  /// 시작과 마지막 분기 깊이의 슬롯 수.
+  ///
+  /// 시작 노드와 단일 보스에 닿는 간선도 인접 슬롯 안에 머물려면 이 값은
+  /// [maxAdjacentSlotDistance]보다 하나까지만 클 수 있다.
+  final int firstBranchWidth;
+  final int lastBranchWidth;
+
+  /// 한 간선이 양 끝 깊이에서 벌어질 수 있는 최대 슬롯 거리.
+  final int maxAdjacentSlotDistance;
 
   /// 분기를 시작하는 깊이. 시작 노드는 하나라 저장 로그의 첫 이동도 명확하다.
   final int firstBranchDepth;

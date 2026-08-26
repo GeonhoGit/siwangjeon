@@ -7,6 +7,8 @@ import 'package:siwangjeon/domain/run/run_node_type.dart';
 import 'package:siwangjeon/domain/run/run_state.dart';
 import 'package:siwangjeon/domain/run/run_tuning.dart';
 
+const _mapSeeds = [0, 1, 7, 53, 20260826, 20260827, 987654321];
+
 void main() {
   group('1막 결정론적 맵', () {
     test('같은 시드는 분기를 포함해 같은 맵을, 다른 시드는 다른 맵을 만든다', () {
@@ -22,6 +24,60 @@ void main() {
         _branchSignature(generateActOneMap(20260826)),
         isNot(_branchSignature(generateActOneMap(20260827))),
       );
+    });
+
+    test('같은 깊이의 서로 다른 노드는 이후 선택지를 다르게 제한한다', () {
+      for (final seed in _mapSeeds) {
+        final nodesByDepth = <int, List<RunNode>>{};
+        for (final node in generateActOneMap(seed).nodes) {
+          nodesByDepth.putIfAbsent(node.depth, () => []).add(node);
+        }
+
+        final informativeDepths = nodesByDepth.entries.where((entry) {
+          final candidateSets = entry.value
+              .map((node) => node.nextNodeIds.join(','))
+              .toSet();
+          return entry.value.length > 1 && candidateSets.length > 1;
+        });
+
+        expect(
+          informativeDepths,
+          isNotEmpty,
+          reason: 'seed $seed에서 같은 깊이의 노드들이 이후 선택지를 제한하지 않는다',
+        );
+      }
+    });
+
+    test('대표 시드에서 맵 경로 성질을 보존한다', () {
+      const tuning = RunTuning.m1;
+
+      for (final seed in _mapSeeds) {
+        final map = generateActOneMap(seed);
+        final bosses = map.nodes
+            .where((node) => node.type == RunNodeType.boss)
+            .toList();
+        final reachableNodeIds = _reachableNodeIds(map, map.nodes.first.id);
+        final middleNodes = map.nodes
+            .where((node) => node.depth == tuning.guaranteedEliteDepth)
+            .toList();
+
+        expect(bosses, hasLength(tuning.bossesPerAct));
+        expect(bosses.single.depth, tuning.nodesPerAct - 1);
+        expect(bosses.single.nextNodeIds, isEmpty);
+        expect(reachableNodeIds, map.nodes.map((node) => node.id).toSet());
+        expect(_pathLengthsToBoss(map, map.nodes.first.id), {
+          tuning.nodesPerAct,
+        });
+        for (final node in map.nodes) {
+          expect(_pathLengthsToBoss(map, node.id), isNotEmpty);
+        }
+        expect(middleNodes, isNotEmpty);
+        expect(
+          middleNodes.every((node) => node.type == RunNodeType.elite),
+          isTrue,
+        );
+        expect(map.nodes.any((node) => node.nextNodeIds.length >= 2), isTrue);
+      }
     });
 
     test('막당 보스는 마지막 깊이의 1명이고 방문 깊이는 정확히 15개다', () {
