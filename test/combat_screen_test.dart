@@ -9,21 +9,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:siwangjeon/app/app.dart';
 import 'package:siwangjeon/app/combat_controller.dart';
+import 'package:siwangjeon/data/m0_content.dart';
+import 'package:siwangjeon/domain/combat/combat_engine.dart';
+import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
 
-/// 화면이 세로 휴대폰 크기에서 검사되도록 고정한다.
+/// 이슈 #1을 재현한 Pixel 8의 실제 물리 해상도와 밀도.
 ///
-/// §8.1의 2번 질문이 "세로 화면에서 답답하지 않은가"이므로, 테스트가
-/// 데스크톱 크기에서 통과해 버리면 정작 물어야 할 조건을 비켜 간다.
-/// 갤럭시 A 계열에 가까운 논리 해상도를 쓴다(§7.5의 저사양 기준).
-const _phone = Size(393, 851);
+/// 1080 / 2.625와 2400 / 2.625가 각각 논리 411×914에 해당한다.
+const _pixel8PhysicalSize = Size(1080, 2400);
+const _pixel8DevicePixelRatio = 2.625;
 
-Future<void> pumpCombat(WidgetTester tester) async {
-  tester.view.physicalSize = _phone;
-  tester.view.devicePixelRatio = 1.0;
+Future<void> pumpCombat(
+  WidgetTester tester, {
+  double textScale = 1.0,
+  CombatController Function()? controller,
+}) async {
+  tester.view.physicalSize = _pixel8PhysicalSize;
+  tester.view.devicePixelRatio = _pixel8DevicePixelRatio;
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
   addTearDown(tester.view.reset);
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
-  await tester.pumpWidget(const ProviderScope(child: SiwangjeonApp()));
+  final overrides = [
+    if (controller != null) combatControllerProvider.overrideWith(controller),
+  ];
+
+  await tester.pumpWidget(
+    ProviderScope(overrides: overrides, child: const SiwangjeonApp()),
+  );
   await tester.pump();
 }
 
@@ -31,6 +45,50 @@ Future<void> pumpCombat(WidgetTester tester) async {
 /// 태우지 않으면 테스트가 "타이머가 남아 있다"로 실패한다.
 Future<void> disposeTree(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
+}
+
+class _FixedHandCombatController extends CombatController {
+  _FixedHandCombatController(this._hand);
+
+  final List<CardDef> _hand;
+
+  @override
+  CombatSession build() {
+    final result = beginCombat(
+      seed: 7,
+      hp: startingHp,
+      maxHp: startingHp,
+      deck: starterDeck,
+      enemies: defaultEncounter(),
+    );
+
+    return CombatSession(
+      seed: 7,
+      state: result.state.copyWith(hand: _hand),
+      lastEvents: result.events,
+      actionLog: const [],
+    );
+  }
+}
+
+Rect paintBounds(WidgetTester tester, Finder finder) {
+  expect(finder, findsOneWidget);
+  final box = tester.renderObject<RenderBox>(finder);
+  return MatrixUtils.transformRect(box.getTransformTo(null), box.paintBounds);
+}
+
+void expectHandIsOnScreenAndClearOfEndTurn(WidgetTester tester, int cardCount) {
+  final screen = _pixel8PhysicalSize / _pixel8DevicePixelRatio;
+  final endTurn = paintBounds(tester, find.byKey(const ValueKey('end-turn')));
+
+  for (var index = 0; index < cardCount; index++) {
+    final card = paintBounds(tester, find.byKey(ValueKey('hand-card-$index')));
+    expect(card.left, greaterThanOrEqualTo(0));
+    expect(card.right, lessThanOrEqualTo(screen.width));
+    expect(card.top, greaterThanOrEqualTo(0));
+    expect(card.bottom, lessThanOrEqualTo(screen.height));
+    expect(card.overlaps(endTurn), isFalse);
+  }
 }
 
 void main() {
@@ -60,6 +118,53 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await disposeTree(tester);
+  });
+
+  testWidgets('Pixel 8의 1.0×와 2.0×에서 긴 손패가 화면과 버튼을 침범하지 않는다', (tester) async {
+    for (final textScale in [2.0, 1.0]) {
+      await pumpCombat(
+        tester,
+        textScale: textScale,
+        controller: () => _FixedHandCombatController(const [
+          bladeOfGrudge,
+          bladeOfGrudge,
+          bladeOfGrudge,
+          bladeOfGrudge,
+          bladeOfGrudge,
+        ]),
+      );
+
+      expect(tester.takeException(), isNull);
+      expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+
+      await disposeTree(tester);
+    }
+  });
+
+  testWidgets('Pixel 8의 1.0×와 2.0×에서 2장 손패는 겹치지 않는다', (tester) async {
+    for (final textScale in [2.0, 1.0]) {
+      await pumpCombat(
+        tester,
+        textScale: textScale,
+        controller: () =>
+            _FixedHandCombatController(const [bladeOfGrudge, bladeOfGrudge]),
+      );
+
+      expect(tester.takeException(), isNull);
+      expectHandIsOnScreenAndClearOfEndTurn(tester, 2);
+
+      final firstCard = paintBounds(
+        tester,
+        find.byKey(const ValueKey('hand-card-0')),
+      );
+      final secondCard = paintBounds(
+        tester,
+        find.byKey(const ValueKey('hand-card-1')),
+      );
+      expect(firstCard.overlaps(secondCard), isFalse);
+
+      await disposeTree(tester);
+    }
   });
 
   testWidgets('카드를 탭해 고르고, 적을 탭해 사용한다 (§5.3 탭-탭)', (tester) async {
@@ -117,7 +222,10 @@ void main() {
     await tester.tap(find.text(name).first);
     await tester.pump();
 
-    expect(container.read(combatControllerProvider).state.block, greaterThan(0));
+    expect(
+      container.read(combatControllerProvider).state.block,
+      greaterThan(0),
+    );
 
     await disposeTree(tester);
   });

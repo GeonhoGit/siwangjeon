@@ -15,6 +15,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -212,7 +213,10 @@ class _StatusBar extends StatelessWidget {
               Text('$minutes:$seconds', style: const TextStyle(fontSize: 13)),
               Text(
                 '${state.turn}턴',
-                style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.6)),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.6),
+                ),
               ),
             ],
           ),
@@ -249,21 +253,17 @@ class _Meter extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 6,
+          runSpacing: 2,
           children: [
             Text(label, style: const TextStyle(fontSize: 12)),
-            const SizedBox(width: 6),
             Text(
               '$value / $max',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-            if (suffix != null) ...[
-              const SizedBox(width: 6),
-              Text(
-                suffix!,
-                style: TextStyle(fontSize: 11, color: color),
-              ),
-            ],
+            if (suffix != null)
+              Text(suffix!, style: TextStyle(fontSize: 11, color: color)),
           ],
         ),
         const SizedBox(height: 3),
@@ -407,7 +407,10 @@ class _EnemyView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text('${enemy.hp} / ${enemy.maxHp}', style: const TextStyle(fontSize: 11)),
+          Text(
+            '${enemy.hp} / ${enemy.maxHp}',
+            style: const TextStyle(fontSize: 11),
+          ),
 
           if (enemy.block > 0)
             Text(
@@ -537,10 +540,9 @@ class _HandArea extends StatelessWidget {
       children: [
         _ResourceRow(state: state),
         Expanded(
-          child: _Fan(
-            state: state,
-            selected: selected,
-            onTapCard: onTapCard,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _Fan(state: state, selected: selected, onTapCard: onTapCard),
           ),
         ),
         Padding(
@@ -550,6 +552,7 @@ class _HandArea extends StatelessWidget {
             children: [
               // §5.2 — 우하단이 엄지 홈포지션이다.
               FilledButton(
+                key: const ValueKey('end-turn'),
                 onPressed: onEndTurn,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(120, 48), // §5.1 최소 터치 타겟 48dp
@@ -619,7 +622,6 @@ class _Fan extends StatelessWidget {
   final void Function(int index) onTapCard;
 
   static const _cardWidth = 96.0;
-  static const _cardHeight = 132.0;
 
   @override
   Widget build(BuildContext context) {
@@ -633,63 +635,96 @@ class _Fan extends StatelessWidget {
       );
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final center = constraints.maxWidth / 2;
-
-        // 카드가 화면을 넘지 않도록 간격을 좁힌다. §8.1의 2번 질문이
-        // "세로 화면에서 카드 5장이 답답하지 않은가"이므로, 여기서 억지로
-        // 밀어 넣으면 그 질문에 답할 수 없는 화면이 된다.
-        final maxSpread = (constraints.maxWidth - _cardWidth - 16);
-        final spread = hand.length <= 1
-            ? 0.0
-            : (maxSpread / (hand.length - 1)).clamp(0.0, _cardWidth * 0.78);
-
-        return Stack(
-          alignment: Alignment.bottomCenter,
-          children: [
-            for (var i = 0; i < hand.length; i++)
-              _positioned(context, i, hand.length, center, spread),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _positioned(
-    BuildContext context,
-    int index,
-    int count,
-    double center,
-    double spread,
-  ) {
-    final offset = count == 1 ? 0.0 : index - (count - 1) / 2;
-    final isSelected = selected == index;
-
-    final playable = state.energy >= state.hand[index].cost && !state.isOver;
-
-    return Positioned(
-      left: center + offset * spread - _cardWidth / 2,
-      bottom: isSelected ? 34 : 6 - offset.abs() * 4,
-      child: Transform.rotate(
-        angle: isSelected ? 0 : offset * 0.075,
-        child: GestureDetector(
-          onTap: state.isOver ? null : () => onTapCard(index),
-          child: AnimatedScale(
-            scale: isSelected ? 1.12 : 1,
-            duration: const Duration(milliseconds: 120),
+    return Flow(
+      delegate: _HandFanDelegate(cardCount: hand.length, selected: selected),
+      children: [
+        for (var i = 0; i < hand.length; i++)
+          GestureDetector(
+            key: ValueKey('hand-card-$i'),
+            onTap: state.isOver ? null : () => onTapCard(i),
             child: _CardView(
-              card: state.hand[index],
+              card: hand[i],
               state: state,
               width: _cardWidth,
-              height: _cardHeight,
-              selected: isSelected,
-              playable: playable,
+              selected: selected == i,
+              playable: state.energy >= hand[i].cost && !state.isOver,
             ),
           ),
-        ),
-      ),
+      ],
     );
+  }
+}
+
+class _HandFanDelegate extends FlowDelegate {
+  const _HandFanDelegate({required this.cardCount, required this.selected});
+
+  static const _edgeInset = 8.0;
+  static const _rotationPerOffset = 0.075;
+
+  final int cardCount;
+  final int? selected;
+
+  @override
+  void paintChildren(FlowPaintingContext context) {
+    final sizes = [
+      for (var i = 0; i < cardCount; i++) context.getChildSize(i)!,
+    ];
+    final offsets = [
+      for (var i = 0; i < cardCount; i++) i - (cardCount - 1) / 2,
+    ];
+    final angles = [
+      for (var i = 0; i < cardCount; i++)
+        selected == i ? 0.0 : offsets[i] * _rotationPerOffset,
+    ];
+    final widestCard = [
+      for (var i = 0; i < cardCount; i++)
+        sizes[i].width * math.cos(angles[i].abs()) +
+            sizes[i].height * math.sin(angles[i].abs()),
+    ].reduce(math.max);
+
+    final spread = cardCount == 1
+        ? 0.0
+        : math.min(
+            widestCard,
+            math.max(
+              0.0,
+              (context.size.width - widestCard - _edgeInset * 2) /
+                  (cardCount - 1),
+            ),
+          );
+
+    for (var i = 0; i < cardCount; i++) {
+      final size = sizes[i];
+      final angle = angles[i];
+      final projectedHeight =
+          size.height * math.cos(angle.abs()) +
+          size.width * math.sin(angle.abs());
+      final left = (context.size.width - size.width) / 2 + offsets[i] * spread;
+      final top =
+          context.size.height -
+          _edgeInset -
+          (size.height + projectedHeight) / 2 -
+          (selected == i ? 34 : 0);
+
+      context.paintChild(
+        i,
+        transform: Matrix4.identity()
+          ..translateByDouble(
+            left + size.width / 2,
+            top + size.height / 2,
+            0,
+            1,
+          )
+          ..rotateZ(angle)
+          ..translateByDouble(-size.width / 2, -size.height / 2, 0, 1),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HandFanDelegate oldDelegate) {
+    return cardCount != oldDelegate.cardCount ||
+        selected != oldDelegate.selected;
   }
 }
 
@@ -698,7 +733,6 @@ class _CardView extends StatelessWidget {
     required this.card,
     required this.state,
     required this.width,
-    required this.height,
     required this.selected,
     required this.playable,
   });
@@ -706,7 +740,6 @@ class _CardView extends StatelessWidget {
   final CardDef card;
   final CombatState state;
   final double width;
-  final double height;
   final bool selected;
   final bool playable;
 
@@ -722,12 +755,13 @@ class _CardView extends StatelessWidget {
     // 실제로 들어가는 값이 갈라진다.
     final damage = previewDamage(state, card);
     final block = previewBlock(state, card);
+    final costDiameter = MediaQuery.textScalerOf(context).scale(20);
 
     return Opacity(
       opacity: playable ? 1 : 0.45,
       child: Container(
         width: width,
-        height: height,
+        constraints: const BoxConstraints(minHeight: 132),
         decoration: BoxDecoration(
           color: const Color(0xFF241C20),
           borderRadius: BorderRadius.circular(9),
@@ -738,13 +772,17 @@ class _CardView extends StatelessWidget {
         ),
         padding: const EdgeInsets.all(6),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              alignment: WrapAlignment.spaceBetween,
               children: [
                 Container(
-                  width: 20,
-                  height: 20,
+                  width: costDiameter,
+                  height: costDiameter,
                   decoration: const BoxDecoration(
                     color: Color(0xFFE0C060),
                     shape: BoxShape.circle,
@@ -759,7 +797,6 @@ class _CardView extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Spacer(),
                 // 업 표시는 카드에서 가장 중요한 정보다(§3.3).
                 // 이게 눈에 띄지 않으면 §8.1의 1번 질문은 물어볼 수조차 없다.
                 if (card.karma > 0)
@@ -785,9 +822,11 @@ class _CardView extends StatelessWidget {
             const SizedBox(height: 5),
             Text(
               card.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
-            const Spacer(),
+            const SizedBox(height: 8),
             if (damage != null)
               Text(
                 '피해 $damage',
@@ -863,7 +902,10 @@ class _OutcomeOverlay extends StatelessWidget {
           const SizedBox(height: 12),
 
           // §8.1의 3번 질문("한 전투가 2~3분에 끝나는가")에 답하기 위한 기록.
-          Text('$minutes:$seconds   $turn턴   업 $karma', style: const TextStyle(fontSize: 15)),
+          Text(
+            '$minutes:$seconds   $turn턴   업 $karma',
+            style: const TextStyle(fontSize: 15),
+          ),
           const SizedBox(height: 4),
 
           // 이상한 판을 만났으면 이 숫자를 적어 두면 그대로 다시 볼 수 있다(§7.4).
