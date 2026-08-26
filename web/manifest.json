@@ -1,0 +1,35 @@
+{
+    "name": "시왕전",
+    "short_name": "시왕전",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#161114",
+    "theme_color": "#B2332B",
+    "description": "저승 49일, 열 명의 시왕 앞에서 업으로 심판받는 턴제 로그라이크 덱빌더",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
