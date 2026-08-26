@@ -610,7 +610,7 @@ class _ResourceRow extends StatelessWidget {
 }
 
 /// 부채꼴 손패 (§5.2).
-class _Fan extends StatelessWidget {
+class _Fan extends StatefulWidget {
   const _Fan({
     required this.state,
     required this.selected,
@@ -621,11 +621,47 @@ class _Fan extends StatelessWidget {
   final int? selected;
   final void Function(int index) onTapCard;
 
+  @override
+  State<_Fan> createState() => _FanState();
+}
+
+class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   static const _cardWidth = 96.0;
+  static const _selectionDuration = Duration(milliseconds: 120);
+
+  late final AnimationController _selectionController;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectionController = AnimationController(
+      vsync: this,
+      duration: _selectionDuration,
+      value: widget.selected == null ? 0 : 1,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _Fan oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selected == oldWidget.selected) return;
+
+    if (widget.selected == null) {
+      _selectionController.value = 0;
+    } else {
+      _selectionController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _selectionController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final hand = state.hand;
+    final hand = widget.state.hand;
     if (hand.isEmpty) {
       return Center(
         child: Text(
@@ -636,18 +672,23 @@ class _Fan extends StatelessWidget {
     }
 
     return Flow(
-      delegate: _HandFanDelegate(cardCount: hand.length, selected: selected),
+      delegate: _HandFanDelegate(
+        cardCount: hand.length,
+        selected: widget.selected,
+        selectionProgress: _selectionController,
+      ),
       children: [
         for (var i = 0; i < hand.length; i++)
           GestureDetector(
             key: ValueKey('hand-card-$i'),
-            onTap: state.isOver ? null : () => onTapCard(i),
+            onTap: widget.state.isOver ? null : () => widget.onTapCard(i),
             child: _CardView(
               card: hand[i],
-              state: state,
+              state: widget.state,
               width: _cardWidth,
-              selected: selected == i,
-              playable: state.energy >= hand[i].cost && !state.isOver,
+              selected: widget.selected == i,
+              playable:
+                  widget.state.energy >= hand[i].cost && !widget.state.isOver,
             ),
           ),
       ],
@@ -656,7 +697,12 @@ class _Fan extends StatelessWidget {
 }
 
 class _HandFanDelegate extends FlowDelegate {
-  const _HandFanDelegate({required this.cardCount, required this.selected});
+  _HandFanDelegate({
+    required this.cardCount,
+    required this.selected,
+    required Animation<double> selectionProgress,
+  }) : _selectionProgress = selectionProgress,
+       super(repaint: selectionProgress);
 
   static const _edgeInset = 8.0;
   static const _rotationPerOffset = 0.075;
@@ -665,6 +711,7 @@ class _HandFanDelegate extends FlowDelegate {
 
   final int cardCount;
   final int? selected;
+  final Animation<double> _selectionProgress;
 
   @override
   BoxConstraints getConstraintsForChild(int index, BoxConstraints constraints) {
@@ -679,16 +726,20 @@ class _HandFanDelegate extends FlowDelegate {
     final offsets = [
       for (var i = 0; i < cardCount; i++) i - (cardCount - 1) / 2,
     ];
+    final baseAngles = [
+      for (var i = 0; i < cardCount; i++) offsets[i] * _rotationPerOffset,
+    ];
     final angles = [
-      for (var i = 0; i < cardCount; i++)
-        selected == i ? 0.0 : offsets[i] * _rotationPerOffset,
+      for (var i = 0; i < cardCount; i++) selected == i ? 0.0 : baseAngles[i],
     ];
     final scales = [
       for (var i = 0; i < cardCount; i++)
-        selected == i ? _selectedScale : 1.0,
+        selected == i
+            ? 1 + (_selectedScale - 1) * _selectionProgress.value
+            : 1.0,
     ];
     // Flow는 Matrix4로 그린 확대를 자식 크기에 반영하지 않는다. 실제 그려지는
-    // 폭 w·cos(θ) + h·sin(θ)에 선택 확대까지 포함해야 양끝이 남는다.
+    // 폭 w·cos(θ) + h·sin(θ)에 현재 확대 배율을 포함해야 양끝이 남는다.
     final widestCard = [
       for (var i = 0; i < cardCount; i++)
         scales[i] *

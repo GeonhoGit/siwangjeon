@@ -209,7 +209,14 @@ void main() {
       final card = find.byKey(const ValueKey('hand-card-2'));
       final before = paintBounds(tester, card);
       await tester.tapAt(before.center);
-      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final middle = paintBounds(tester, card);
+      expect(middle.width, greaterThan(before.width));
+      expect(middle.width, lessThan(before.width * 1.12));
+
+      await tester.pump(const Duration(milliseconds: 60));
 
       final after = paintBounds(tester, card);
       expect(after.width, closeTo(before.width * 1.12, 0.01));
