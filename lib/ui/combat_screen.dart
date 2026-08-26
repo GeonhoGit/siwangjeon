@@ -17,6 +17,7 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -645,6 +646,17 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   @override
   void didUpdateWidget(covariant _Fan oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (!listEquals(widget.state.hand, oldWidget.state.hand)) {
+      // 사용한 카드가 빠진 뒤에는 같은 인덱스가 다른 카드를 가리킨다. 이전
+      // 선택의 축소를 이어 가면 그 카드가 선택된 것처럼 보이므로 즉시 버린다.
+      _previousSelected = null;
+      _selectionController
+        ..stop()
+        ..value = widget.selected == null ? 0 : 1;
+      return;
+    }
+
     if (widget.selected == oldWidget.selected) return;
 
     _previousSelected = oldWidget.selected;
