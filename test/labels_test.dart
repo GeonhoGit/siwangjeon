@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:siwangjeon/data/m0_content.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 import 'package:siwangjeon/ui/labels.dart';
@@ -17,5 +18,14 @@ void main() {
       expect(intentLabel(const EnemyDefend(5)), '방어 5');
       expect(intentLabel(const EnemyInflict(StatusId.vulnerable, 2)), '취약 2');
     });
+  });
+
+  test('겹친 손패용 앞 두 글자는 M0의 20종을 모두 구분한다', () {
+    final labels = m0Cards.map(handCardLabel).toList();
+
+    expect(labels, hasLength(20));
+    expect(labels.toSet(), hasLength(20));
+    expect(handCardLabel(defend), '수비');
+    expect(handCardLabel(guardianSigil), '수호');
   });
 }

@@ -24,14 +24,23 @@ import 'package:siwangjeon/ui/combat_screen.dart';
 const _pixel8PhysicalSize = Size(1080, 2400);
 const _pixel8DevicePixelRatio = 2.625;
 
+/// Galaxy S25 Ultra (SM-S938N)의 실제 물리 해상도와 density 450.
+///
+/// 450 / 160 = 2.8125이므로 논리 크기는 384×832다. 이 기기는 Pixel 8보다
+/// 27dp 좁고 82dp 짧아, 겹친 손패의 왼쪽 식별 띠를 검증하는 기준으로 쓴다.
+const _galaxyS25UltraPhysicalSize = Size(1080, 2340);
+const _galaxyS25UltraDevicePixelRatio = 2.8125;
+
 Future<void> pumpCombat(
   WidgetTester tester, {
   double textScale = 1.0,
   int? seed,
   CombatController Function()? controller,
+  Size physicalSize = _pixel8PhysicalSize,
+  double devicePixelRatio = _pixel8DevicePixelRatio,
 }) async {
-  tester.view.physicalSize = _pixel8PhysicalSize;
-  tester.view.devicePixelRatio = _pixel8DevicePixelRatio;
+  tester.view.physicalSize = physicalSize;
+  tester.view.devicePixelRatio = devicePixelRatio;
   tester.platformDispatcher.textScaleFactorTestValue = textScale;
   addTearDown(tester.view.reset);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -119,7 +128,7 @@ Rect layoutBounds(WidgetTester tester, Finder finder) {
 }
 
 void expectHandIsOnScreenAndClearOfEndTurn(WidgetTester tester, int cardCount) {
-  final screen = _pixel8PhysicalSize / _pixel8DevicePixelRatio;
+  final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
   final endTurn = paintBounds(tester, find.byKey(const ValueKey('end-turn')));
 
   for (var index = 0; index < cardCount; index++) {
@@ -157,7 +166,7 @@ void expectFanHasNoTopBlankBand(WidgetTester tester, int cardCount) {
 }
 
 void expectHandIsInLowerSixtyPercent(WidgetTester tester, int cardCount) {
-  final screen = _pixel8PhysicalSize / _pixel8DevicePixelRatio;
+  final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
   final interactionBoundary = screen.height * 0.4;
 
   for (var index = 0; index < cardCount; index++) {
@@ -340,6 +349,49 @@ void main() {
         expectHandIsInsideFlow(tester, cardCount);
         await disposeTree(tester);
       }
+    }
+  });
+
+  testWidgets('Galaxy S25 Ultra의 겹친 손패는 비용과 두 글자 이름을 남긴다', (tester) async {
+    const hand = [
+      defend,
+      guardianSigil,
+      greatPurification,
+      clingingOath,
+      bladeOfGrudge,
+    ];
+    await pumpCombat(
+      tester,
+      textScale: 0.9,
+      physicalSize: _galaxyS25UltraPhysicalSize,
+      devicePixelRatio: _galaxyS25UltraDevicePixelRatio,
+      controller: () => _FixedHandCombatController(hand),
+    );
+
+    try {
+      for (var index = 0; index < 4; index++) {
+        final card = hand[index];
+        final cost = paintBounds(
+          tester,
+          find.byKey(ValueKey('card-cost-${card.id}')),
+        );
+        final label = paintBounds(
+          tester,
+          find.byKey(ValueKey('card-hand-label-${card.id}')),
+        );
+        final coveringCard = paintBounds(
+          tester,
+          find.byKey(ValueKey('hand-card-${index + 1}')),
+        );
+
+        // 오른쪽 카드는 뒤에 칠해져 왼쪽 카드의 오른쪽을 덮는다. 식별자는
+        // 다음 카드의 시작 전에서 끝나야 선택 전에도 읽힌다.
+        expect(cost.right, lessThan(coveringCard.left));
+        expect(label.right, lessThan(coveringCard.left));
+      }
+      expect(tester.takeException(), isNull);
+    } finally {
+      await disposeTree(tester);
     }
   });
 
