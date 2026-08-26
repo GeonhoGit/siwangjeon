@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:siwangjeon/data/m0_content.dart';
-import 'package:siwangjeon/domain/combat/combat_engine.dart';
 import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
@@ -60,28 +59,17 @@ void main() {
       }
     });
 
-    test('시작 덱에서는 고정 시드의 한 전투에 업 카드와 정화 카드가 함께 손에 잡힌다', () {
-      final hands = [
-        for (final seed in const [7, 19, 53, 20260826])
-          beginCombat(
-            seed: seed,
-            hp: startingHp,
-            maxHp: startingHp,
-            deck: starterDeck,
-            enemies: defaultEncounter(),
-          ).state.hand,
-      ];
+    test('시작 덱 8장과 카드 보상 풀이 M0 카드 전체를 나눈다', () {
+      final starterIds = starterDeck.map((card) => card.id).toSet();
+      final rewardIds = cardRewardPool.map((card) => card.id).toSet();
 
+      expect(starterDeck, hasLength(8));
+      expect(starterDeck.where((card) => card.karma > 0), hasLength(3));
+      expect(starterDeck.where(_isPurification), hasLength(1));
+      expect(starterIds.intersection(rewardIds), isEmpty);
       expect(
-        starterDeck.map((card) => card.id).toSet(),
+        starterIds.union(rewardIds),
         m0Cards.map((card) => card.id).toSet(),
-      );
-      expect(
-        hands.any(
-          (hand) =>
-              hand.any((card) => card.karma > 0) && hand.any(_isPurification),
-        ),
-        isTrue,
       );
     });
   });
