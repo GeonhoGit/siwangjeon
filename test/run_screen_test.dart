@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:siwangjeon/app/app.dart';
 import 'package:siwangjeon/app/run_controller.dart';
+import 'package:siwangjeon/data/m1_events.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
@@ -169,8 +170,16 @@ Future<void> _moveUntilCombat(WidgetTester tester) async {
   for (var depth = 0; depth < 15; depth++) {
     if (find.byType(CombatScreen).evaluate().isNotEmpty) return;
     final session = _containerFor(tester).read(runControllerProvider);
-    final move = session.legalActions.whereType<MoveToNode>().first;
-    await tester.tap(find.byKey(ValueKey('run-node-${move.nodeId}')));
+    final moves = session.legalActions.whereType<MoveToNode>();
+    if (moves.isNotEmpty) {
+      await tester.tap(find.byKey(ValueKey('run-node-${moves.first.nodeId}')));
+    } else {
+      // 이번 라운드는 노드 내용 UI를 만들지 않는다. 전투·보상 UI 검증은
+      // 도메인이 준 현재 비전투 선택 하나를 직접 기록해 다음 전투로 진행한다.
+      _containerFor(tester)
+          .read(runControllerProvider.notifier)
+          .dispatch(session.legalActions.first);
+    }
     await tester.pump();
   }
   fail('전투 노드에 도달하지 못했다');
@@ -598,4 +607,5 @@ RunContent _victoryContent() => RunContent(
       ),
   ],
   cardRewardPool: _rewardCards,
+  events: m1Events,
 );

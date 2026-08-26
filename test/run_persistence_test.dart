@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:siwangjeon/app/run_controller.dart';
+import 'package:siwangjeon/data/m1_events.dart';
 import 'package:siwangjeon/data/run_storage.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
@@ -100,6 +101,7 @@ RunContent _content() => RunContent(
     _enemy('persistence_test_enemy_c'),
   ],
   cardRewardPool: const [_rewardA, _rewardB, _rewardC],
+  events: m1Events,
 );
 
 Enemy _enemy(String id) =>
@@ -137,11 +139,13 @@ RunState _completedRewardChoice(RunContent content) {
 RunState _enterCombat(RunContent content) {
   var state = startRun(seed: 20260827, characterId: 'm0');
   while (!replayRun(state, content: content).isInCombat) {
-    final move = legalRunActions(
+    final legal = legalRunActions(state, content: content);
+    final moves = legal.whereType<MoveToNode>();
+    state = applyRunAction(
       state,
+      moves.isNotEmpty ? moves.first : legal.first,
       content: content,
-    ).whereType<MoveToNode>().first;
-    state = applyRunAction(state, move, content: content);
+    );
   }
   return state;
 }

@@ -9,7 +9,9 @@ import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/run/run_action.dart';
 import 'package:siwangjeon/domain/run/run_content.dart';
 import 'package:siwangjeon/domain/run/run_engine.dart';
+import 'package:siwangjeon/domain/run/run_node_type.dart';
 import 'package:siwangjeon/domain/run/run_state.dart';
+import 'package:siwangjeon/domain/run/run_tuning.dart';
 
 const _finisher = CardDef(
   id: 'save_test_finisher',
@@ -45,6 +47,10 @@ const _rewardC = CardDef(
   effects: [BlockEffect(1)],
 );
 
+const _combatOnlyTuning = RunTuning(
+  nodeTypeWeights: [RunNodeWeight(RunNodeType.combat, 1)],
+);
+
 void main() {
   group('런 저장 직렬화', () {
     test('RunState는 모든 sealed 액션을 JSON 왕복해 같은 값을 유지한다', () {
@@ -58,6 +64,11 @@ void main() {
             actions: [PlayCard(handIndex: 2, targetIndex: 1), EndTurn()],
           ),
           ChooseCardReward(nodeId: 3, cardId: 'card_strike'),
+          BuyShopCard(nodeId: 4, cardId: 'card_defend'),
+          RemoveShopCard(nodeId: 4, cardInstanceId: 'start:1:card_strike'),
+          LeaveShop(nodeId: 4),
+          ChooseWildCampOption(nodeId: 5, choice: WildCampChoice.repent),
+          ChooseEventOption(nodeId: 6, choiceId: 'confess'),
         ],
       );
 
@@ -67,7 +78,7 @@ void main() {
 
       expect(restored.seed, state.seed);
       expect(restored.characterId, state.characterId);
-      expect(restored.actionLog, hasLength(3));
+      expect(restored.actionLog, hasLength(8));
       expect(restored.actionLog[0], isA<MoveToNode>());
       expect((restored.actionLog[0] as MoveToNode).nodeId, 3);
       final combat = restored.actionLog[1] as CombatNodeLog;
@@ -80,6 +91,19 @@ void main() {
       final reward = restored.actionLog[2] as ChooseCardReward;
       expect(reward.nodeId, 3);
       expect(reward.cardId, 'card_strike');
+      final purchase = restored.actionLog[3] as BuyShopCard;
+      expect(purchase.nodeId, 4);
+      expect(purchase.cardId, 'card_defend');
+      final removal = restored.actionLog[4] as RemoveShopCard;
+      expect(removal.nodeId, 4);
+      expect(removal.cardInstanceId, 'start:1:card_strike');
+      expect((restored.actionLog[5] as LeaveShop).nodeId, 4);
+      final wildCamp = restored.actionLog[6] as ChooseWildCampOption;
+      expect(wildCamp.nodeId, 5);
+      expect(wildCamp.choice, WildCampChoice.repent);
+      final event = restored.actionLog[7] as ChooseEventOption;
+      expect(event.nodeId, 6);
+      expect(event.choiceId, 'confess');
     });
 
     test('버전 불일치와 손상 파일은 거부하고 원본을 지우지 않는다', () async {
@@ -91,7 +115,7 @@ void main() {
       final storage = FileRunStorage(documentsDirectory: () async => directory);
 
       const unsupported =
-          '{"version": 999, "seed": 1, "characterId": "m0", "actionLog": []}';
+          '{"version": 1, "seed": 1, "characterId": "m0", "actionLog": []}';
       await file.writeAsString(unsupported);
       expect(await storage.load(), isA<RunLoadRejected>());
       expect(await file.readAsString(), unsupported);
@@ -134,8 +158,16 @@ void main() {
       final loaded = await storage.load();
       final restored = (loaded as RunLoadFound).state;
 
-      final expected = replayRun(state, content: content);
-      final actual = replayRun(restored, content: content);
+      final expected = replayRun(
+        state,
+        tuning: _combatOnlyTuning,
+        content: content,
+      );
+      final actual = replayRun(
+        restored,
+        tuning: _combatOnlyTuning,
+        content: content,
+      );
 
       expect(actual.currentNodeId, expected.currentNodeId);
       expect(actual.hp, expected.hp);
@@ -177,19 +209,35 @@ RunState _afterOneCombatTurn(RunContent content) {
   final entered = _enterCombat(content);
   final turnEnd = legalRunActions(
     entered,
+    tuning: _combatOnlyTuning,
     content: content,
   ).whereType<CombatNodeLog>().firstWhere((log) => log.actions.last is EndTurn);
-  return applyRunAction(entered, turnEnd, content: content);
+  return applyRunAction(
+    entered,
+    turnEnd,
+    tuning: _combatOnlyTuning,
+    content: content,
+  );
 }
 
 RunState _enterCombat(RunContent content) {
   var state = startRun(seed: 20260827, characterId: 'm0');
-  while (!replayRun(state, content: content).isInCombat) {
+  while (!replayRun(
+    state,
+    tuning: _combatOnlyTuning,
+    content: content,
+  ).isInCombat) {
     final move = legalRunActions(
       state,
+      tuning: _combatOnlyTuning,
       content: content,
     ).whereType<MoveToNode>().first;
-    state = applyRunAction(state, move, content: content);
+    state = applyRunAction(
+      state,
+      move,
+      tuning: _combatOnlyTuning,
+      content: content,
+    );
   }
   return state;
 }

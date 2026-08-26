@@ -6,6 +6,7 @@
 library;
 
 import 'run_node_type.dart';
+import 'run_event.dart';
 
 class RunNodeWeight {
   const RunNodeWeight(this.type, this.weight);
@@ -41,6 +42,12 @@ class RunTuning {
     this.cardRewardChoiceCount = 3,
     this.baseMoneyReward = 15,
     this.eliteMoneyRewardMultiplier = 2,
+    this.shopCardChoiceCount = 3,
+    this.shopCardPrice = 45,
+    this.shopRemoveCardPrice = 60,
+    this.wildCampRestHeal = 24,
+    this.wildCampRepentKarmaCleanse = 3,
+    this.wildCampRepentMoneyCost = 30,
   }) : assert(bossesPerAct == 1),
        assert(nodesPerAct > 1),
        assert(minNodesPerAct > 0),
@@ -65,7 +72,13 @@ class RunTuning {
        assert(bossEncounterSize > 0),
        assert(cardRewardChoiceCount > 0),
        assert(baseMoneyReward >= 0),
-       assert(eliteMoneyRewardMultiplier > 0);
+       assert(eliteMoneyRewardMultiplier > 0),
+       assert(shopCardChoiceCount > 0),
+       assert(shopCardPrice >= 0),
+       assert(shopRemoveCardPrice >= 0),
+       assert(wildCampRestHeal > 0),
+       assert(wildCampRepentKarmaCleanse > 0),
+       assert(wildCampRepentMoneyCost >= 0);
 
   /// 기획서 §2.1의 “7 노드마다 시왕 심판”과 §4.1의 “막당 약 15개”는
   /// 함께 만족할 수 없다. 사용자는 막당 마지막 시왕 1명과 방문 깊이 15개를
@@ -136,6 +149,47 @@ class RunTuning {
   /// 정예전의 임시 보상 배수. 유물이 들어오면 카드 보상과 함께 이 계층에서
   /// 정예 전용 보상으로 확장한다.
   final int eliteMoneyRewardMultiplier;
+
+  /// 상점 한 곳에서 제시하는 서로 다른 카드 수와 카드 한 장의 가격.
+  final int shopCardChoiceCount;
+  final int shopCardPrice;
+
+  /// 상점에서 카드 한 장을 덱에서 제거하는 가격. 제거는 강한 덱 압축이므로
+  /// 구매보다 높게 두되, 밸런스 시뮬레이터가 이 값만 흔들 수 있게 모은다.
+  final int shopRemoveCardPrice;
+
+  /// 야장의 휴식 회복량과 참회가 씻는 업·노잣돈 대가.
+  ///
+  /// §2.1에는 카드 강화도 야장 선택지로 적혀 있지만, 강화 상태는 카드 모델·보상
+  /// 풀·저장 참조를 함께 바꾸므로 이번 도메인 범위에서는 넣지 않는다. 후속 단계는
+  /// 이 세 값 옆에 강화 비용과 효과를 추가해 세 선택지로 확장한다.
+  final int wildCampRestHeal;
+  final int wildCampRepentKarmaCleanse;
+  final int wildCampRepentMoneyCost;
+
+  /// 사건 결과의 모든 수치. data의 사건 정의는 [RunEventEffect]만 고르므로,
+  /// 콘텐츠 문구를 고쳐도 밸런스 수치가 흩어지지 않는다.
+  RunEventDelta eventDeltaFor(RunEventEffect effect) => switch (effect) {
+    RunEventEffect.acceptBribe => const RunEventDelta(karma: 2, money: 25),
+    RunEventEffect.returnBribe => const RunEventDelta(karma: -2, hp: -8),
+    RunEventEffect.consumeOffering => const RunEventDelta(hp: 16, karma: 2),
+    RunEventEffect.shareOffering => const RunEventDelta(hp: -8, karma: -2),
+    RunEventEffect.takeSmugglerCoin => const RunEventDelta(karma: 2, money: 30),
+    RunEventEffect.payFerryman => const RunEventDelta(karma: -2, money: -25),
+    RunEventEffect.falsifyLedger => const RunEventDelta(karma: 2, money: 25),
+    RunEventEffect.confessLedger => const RunEventDelta(karma: -2, hp: -10),
+    RunEventEffect.burnAncestralAshes => const RunEventDelta(hp: 12, karma: 2),
+    RunEventEffect.tendAncestralAshes => const RunEventDelta(
+      karma: -2,
+      money: -20,
+    ),
+    RunEventEffect.stealWidowCandle => const RunEventDelta(karma: 2, money: 30),
+    RunEventEffect.lightWidowCandle => const RunEventDelta(karma: -2, hp: -8),
+    RunEventEffect.drinkOblivion => const RunEventDelta(hp: 15, karma: 2),
+    RunEventEffect.refuseOblivion => const RunEventDelta(karma: -2, hp: -10),
+    RunEventEffect.takeWardenFavor => const RunEventDelta(karma: 2, money: 20),
+    RunEventEffect.endureWardenTrial => const RunEventDelta(karma: -2, hp: -12),
+  };
 
   bool isBranchingDepth(int depth) =>
       depth >= firstBranchDepth && depth <= lastBranchDepth;

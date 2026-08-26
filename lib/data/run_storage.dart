@@ -18,7 +18,10 @@ import '../domain/run/run_state.dart';
 ///
 /// 버전이 다른 파일은 일부 필드만 억지로 읽지 않고 거부한다. 액션 하나라도
 /// 잘못 해석하면 이후 재생 상태 전체를 믿을 수 없기 때문이다.
-const runSaveVersion = 1;
+/// 상점·야장·사건 액션이 actionLog의 허용 타입을 넓혔다. 이전 앱은 새 `type`을
+/// 해석할 수 없으므로, 같은 버전으로 저장해 구버전이 조용히 잘못 복원하지 않게
+/// v2로 올린다. v1 저장은 기존 정책대로 안전하게 거부한다.
+const runSaveVersion = 2;
 
 /// 테스트와 앱 배선이 공유하는 런 저장소 경계.
 abstract interface class RunStorage {
@@ -95,6 +98,27 @@ class RunSaveCodec {
       'nodeId': nodeId,
       'cardId': cardId,
     },
+    BuyShopCard(:final nodeId, :final cardId) => {
+      'type': 'buyShopCard',
+      'nodeId': nodeId,
+      'cardId': cardId,
+    },
+    RemoveShopCard(:final nodeId, :final cardInstanceId) => {
+      'type': 'removeShopCard',
+      'nodeId': nodeId,
+      'cardInstanceId': cardInstanceId,
+    },
+    LeaveShop(:final nodeId) => {'type': 'leaveShop', 'nodeId': nodeId},
+    ChooseWildCampOption(:final nodeId, :final choice) => {
+      'type': 'chooseWildCampOption',
+      'nodeId': nodeId,
+      'choice': choice.name,
+    },
+    ChooseEventOption(:final nodeId, :final choiceId) => {
+      'type': 'chooseEventOption',
+      'nodeId': nodeId,
+      'choiceId': choiceId,
+    },
   };
 
   Map<String, Object?> _encodeCombatAction(CombatAction action) =>
@@ -129,7 +153,41 @@ class RunSaveCodec {
         cardId: _string(map, 'cardId'),
       );
     }
+    if (type == 'buyShopCard') {
+      return BuyShopCard(
+        nodeId: _int(map, 'nodeId'),
+        cardId: _string(map, 'cardId'),
+      );
+    }
+    if (type == 'removeShopCard') {
+      return RemoveShopCard(
+        nodeId: _int(map, 'nodeId'),
+        cardInstanceId: _string(map, 'cardInstanceId'),
+      );
+    }
+    if (type == 'leaveShop') {
+      return LeaveShop(nodeId: _int(map, 'nodeId'));
+    }
+    if (type == 'chooseWildCampOption') {
+      return ChooseWildCampOption(
+        nodeId: _int(map, 'nodeId'),
+        choice: _wildCampChoice(_string(map, 'choice')),
+      );
+    }
+    if (type == 'chooseEventOption') {
+      return ChooseEventOption(
+        nodeId: _int(map, 'nodeId'),
+        choiceId: _string(map, 'choiceId'),
+      );
+    }
     throw FormatException('알 수 없는 런 액션 형식: $type');
+  }
+
+  WildCampChoice _wildCampChoice(String source) {
+    for (final choice in WildCampChoice.values) {
+      if (choice.name == source) return choice;
+    }
+    throw FormatException('알 수 없는 야장 선택지: $source');
   }
 
   CombatAction _decodeCombatAction(Object? rawAction) {
