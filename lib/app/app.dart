@@ -6,10 +6,14 @@ library;
 
 import 'package:flutter/material.dart';
 
-import '../ui/combat_screen.dart';
+import '../ui/run_screen.dart';
 
 class SiwangjeonApp extends StatelessWidget {
-  const SiwangjeonApp({super.key});
+  const SiwangjeonApp({super.key, this.home});
+
+  /// 전투 화면의 기존 단독 위젯 테스트가 같은 provider 주입 경로를 유지하도록
+  /// 테스트 전용 시작 화면을 허용한다. 앱의 실제 시작점은 [RunScreen]이다.
+  final Widget? home;
 
   @override
   Widget build(BuildContext context) {
@@ -25,8 +29,7 @@ class SiwangjeonApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xFF161114),
       ),
-      // M0에는 화면이 이것 하나뿐이다. 지도·보상·상점은 M1의 일이다(§8).
-      home: const CombatScreen(),
+      home: home ?? const RunScreen(),
     );
   }
 }
