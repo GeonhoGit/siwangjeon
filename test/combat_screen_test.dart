@@ -71,7 +71,10 @@ Future<void> pumpCombat(
   ];
 
   await tester.pumpWidget(
-    ProviderScope(overrides: overrides, child: const SiwangjeonApp()),
+    ProviderScope(
+      overrides: overrides,
+      child: const SiwangjeonApp(home: CombatScreen()),
+    ),
   );
   await tester.pump();
 }
