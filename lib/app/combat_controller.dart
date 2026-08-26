@@ -16,6 +16,12 @@ import '../domain/model/combat_action.dart';
 import '../domain/model/combat_state.dart';
 import '../domain/model/game_event.dart';
 
+/// 새 전투의 시드를 만든다. 테스트는 이 provider를 고정 값으로 바꿔 손패를
+/// 결정론적으로 재현한다.
+final combatSeedFactoryProvider = Provider<int Function()>((ref) {
+  return () => DateTime.now().millisecondsSinceEpoch;
+});
+
 /// 화면이 보고 있는 전투 한 판.
 class CombatSession {
   const CombatSession({
@@ -42,7 +48,7 @@ class CombatSession {
 
 class CombatController extends Notifier<CombatSession> {
   @override
-  CombatSession build() => _newRun(DateTime.now().millisecondsSinceEpoch);
+  CombatSession build() => _newRun(_nextSeed());
 
   static CombatSession _newRun(int seed) {
     final result = beginCombat(
@@ -90,8 +96,10 @@ class CombatController extends Notifier<CombatSession> {
 
   /// 새 전투. 시드를 넘기면 그 판을 그대로 다시 볼 수 있다 (§7.4).
   void restart({int? seed}) {
-    state = _newRun(seed ?? DateTime.now().millisecondsSinceEpoch);
+    state = _newRun(seed ?? _nextSeed());
   }
+
+  int _nextSeed() => ref.read(combatSeedFactoryProvider)();
 
   bool _isLegal(PlayCard action) {
     return legalActions(state.state).whereType<PlayCard>().any(

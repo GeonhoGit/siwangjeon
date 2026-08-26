@@ -23,6 +23,7 @@ const _pixel8DevicePixelRatio = 2.625;
 Future<void> pumpCombat(
   WidgetTester tester, {
   double textScale = 1.0,
+  int? seed,
   CombatController Function()? controller,
 }) async {
   tester.view.physicalSize = _pixel8PhysicalSize;
@@ -32,6 +33,7 @@ Future<void> pumpCombat(
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
   final overrides = [
+    if (seed != null) combatSeedFactoryProvider.overrideWithValue(() => seed),
     if (controller != null) combatControllerProvider.overrideWith(controller),
   ];
 
@@ -117,6 +119,30 @@ void main() {
     // 오버플로가 있으면 이 시점에 예외가 잡혀 있다.
     expect(tester.takeException(), isNull);
 
+    await disposeTree(tester);
+  });
+
+  testWidgets('주입한 시드가 초기 손패를 결정론적으로 고정한다', (tester) async {
+    const seed = 20260826;
+
+    await pumpCombat(tester, seed: seed);
+    final firstContainer = ProviderScope.containerOf(
+      tester.element(find.byType(CombatScreen)),
+    );
+    final firstSession = firstContainer.read(combatControllerProvider);
+    final firstHand = firstSession.state.hand.map((card) => card.id).toList();
+
+    expect(firstSession.seed, seed);
+    await disposeTree(tester);
+
+    await pumpCombat(tester, seed: seed);
+    final secondContainer = ProviderScope.containerOf(
+      tester.element(find.byType(CombatScreen)),
+    );
+    final secondSession = secondContainer.read(combatControllerProvider);
+
+    expect(secondSession.seed, seed);
+    expect(secondSession.state.hand.map((card) => card.id), firstHand);
     await disposeTree(tester);
   });
 
