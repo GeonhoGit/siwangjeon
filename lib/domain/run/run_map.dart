@@ -60,9 +60,9 @@ RunMap generateActOneMap(int seed, {RunTuning tuning = RunTuning.m1}) {
 
   for (var depth = 0; depth < tuning.nodesPerAct; depth++) {
     final isBossDepth = depth == tuning.nodesPerAct - 1;
-    final nodeCountResult = isBossDepth || !tuning.isBranchingDepth(depth)
+    final nodeCountResult = isBossDepth
         ? (1, rng)
-        : _pickBranchWidth(rng, tuning);
+        : _pickNodeCount(depth, rng, tuning);
     final nodeCount = nodeCountResult.$1;
     rng = nodeCountResult.$2;
     final ids = <int>[];
@@ -87,10 +87,15 @@ RunMap generateActOneMap(int seed, {RunTuning tuning = RunTuning.m1}) {
 
   final nodes = <RunNode>[];
   for (var depth = 0; depth < tuning.nodesPerAct; depth++) {
-    final nextNodeIds = depth + 1 == tuning.nodesPerAct
-        ? const <int>[]
-        : nodeIdsByDepth[depth + 1];
     for (var slot = 0; slot < nodeIdsByDepth[depth].length; slot++) {
+      final nextNodeIds = depth + 1 == tuning.nodesPerAct
+          ? const <int>[]
+          : _nextNodeIdsForSlot(
+              currentSlot: slot,
+              currentSlotCount: nodeIdsByDepth[depth].length,
+              nextNodeIds: nodeIdsByDepth[depth + 1],
+              tuning: tuning,
+            );
       nodes.add(
         RunNode(
           id: nodeIdsByDepth[depth][slot],
@@ -115,6 +120,52 @@ RunMap generateActOneMap(int seed, {RunTuning tuning = RunTuning.m1}) {
   }
 
   throw StateError('노드 종류 가중치가 난수 범위를 모두 덮지 못했다');
+}
+
+(int, Rng) _pickNodeCount(int depth, Rng rng, RunTuning tuning) {
+  if (!tuning.isBranchingDepth(depth)) return (1, rng);
+  if (depth == tuning.firstBranchDepth) return (tuning.firstBranchWidth, rng);
+  if (depth == tuning.lastBranchDepth) return (tuning.lastBranchWidth, rng);
+  return _pickBranchWidth(rng, tuning);
+}
+
+/// 같은 깊이의 슬롯은 다음 깊이에 투영한 구간과 바로 오른쪽 슬롯만 잇는다.
+///
+/// 투영 구간은 모든 출발 슬롯에 하나 이상의 출구를 주고 다음 깊이의 모든 슬롯을
+/// 덮는다. 따라서 시작에서 도달할 수 없는 노드와 보스에 닿지 못하는 막다른 길은
+/// 사후 보정 없이 생성되지 않는다. 구간의 순서가 유지되어 간선도 교차하지 않는다.
+List<int> _nextNodeIdsForSlot({
+  required int currentSlot,
+  required int currentSlotCount,
+  required List<int> nextNodeIds,
+  required RunTuning tuning,
+}) {
+  final nextSlotCount = nextNodeIds.length;
+  final firstTargetSlot = (currentSlot * nextSlotCount) ~/ currentSlotCount;
+  final lastTargetSlotExclusive =
+      ((currentSlot + 1) * nextSlotCount + currentSlotCount - 1) ~/
+      currentSlotCount;
+  final targetSlots = <int>[];
+
+  for (
+    var targetSlot = firstTargetSlot;
+    targetSlot < lastTargetSlotExclusive;
+    targetSlot++
+  ) {
+    if ((targetSlot - currentSlot).abs() <= tuning.maxAdjacentSlotDistance) {
+      targetSlots.add(targetSlot);
+    }
+  }
+
+  assert(targetSlots.isNotEmpty);
+  final rightNeighborSlot = targetSlots.last + 1;
+  if (rightNeighborSlot < nextSlotCount &&
+      (rightNeighborSlot - currentSlot).abs() <=
+          tuning.maxAdjacentSlotDistance) {
+    targetSlots.add(rightNeighborSlot);
+  }
+
+  return [for (final targetSlot in targetSlots) nextNodeIds[targetSlot]];
 }
 
 (int, Rng) _pickBranchWidth(Rng rng, RunTuning tuning) {
@@ -149,6 +200,15 @@ void _validateTuning(RunTuning tuning) {
   }
   if (tuning.minBranchWidth < 2 ||
       tuning.maxBranchWidth < tuning.minBranchWidth ||
+      tuning.firstBranchWidth < tuning.minBranchWidth ||
+      tuning.firstBranchWidth > tuning.maxBranchWidth ||
+      tuning.lastBranchWidth < tuning.minBranchWidth ||
+      tuning.lastBranchWidth > tuning.maxBranchWidth ||
+      tuning.maxAdjacentSlotDistance <= 0 ||
+      tuning.maxBranchWidth - tuning.minBranchWidth >
+          tuning.maxAdjacentSlotDistance ||
+      tuning.firstBranchWidth > tuning.maxAdjacentSlotDistance + 1 ||
+      tuning.lastBranchWidth > tuning.maxAdjacentSlotDistance + 1 ||
       tuning.firstBranchDepth <= 0 ||
       tuning.lastBranchDepth < tuning.firstBranchDepth ||
       tuning.lastBranchDepth >= tuning.nodesPerAct - 1) {
