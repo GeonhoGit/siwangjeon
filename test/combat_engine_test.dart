@@ -897,6 +897,13 @@ void main() {
   });
 
   group('미리보기 — 화면이 규칙을 다시 계산하지 않게 한다', () {
+    test('전투 밖 보상 표기는 상태와 업 보정 전 기본 수치를 쓴다', () {
+      expect(previewBaseDamage(bladeOfGrudge), 6);
+      expect(previewBaseBlock(defend), 5);
+      expect(previewBaseDamage(defend), isNull);
+      expect(previewBaseBlock(strike), isNull);
+    });
+
     test('업이 쌓이면 카드에 적히는 피해도 함께 오른다', () {
       final low = start(deck: deckOf(bladeOfGrudge, 10), enemies: [dummy()]);
       final high = start(

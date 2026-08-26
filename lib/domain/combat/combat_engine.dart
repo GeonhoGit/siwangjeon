@@ -172,6 +172,25 @@ int? previewDamage(
   return found ? total : null;
 }
 
+/// 전투 상태가 없을 때 카드 정의만으로 알 수 있는 기본 피해량.
+///
+/// 보상 화면은 아직 전투를 시작하지 않아 기세·약화·취약과 현재 업을 적용할
+/// 근거가 없다. 그 화면은 이 값을 "상태와 업 보정 전 기본 수치"로 명시해
+/// 보여 주고, 실제 전투에서는 반드시 [previewDamage]의 최종 수치를 쓴다.
+/// 이렇게 두 표시의 적용 범위를 엔진에서 정해 UI가 피해 규칙을 복제하지 않는다.
+int? previewBaseDamage(CardDef card) {
+  var total = 0;
+  var found = false;
+
+  for (final effect in card.effects) {
+    if (effect is! DamageEffect) continue;
+    found = true;
+    total += effect.value;
+  }
+
+  return found ? total : null;
+}
+
 /// 카드가 지금 줄 방어도. 방어 효과가 없으면 null.
 int? previewBlock(
   CombatState state,
@@ -185,6 +204,23 @@ int? previewBlock(
     if (effect is! BlockEffect) continue;
     found = true;
     total += effect.value + (state.statuses[StatusId.dexterity] ?? 0);
+  }
+
+  return found ? total : null;
+}
+
+/// 전투 상태가 없을 때 카드 정의만으로 알 수 있는 기본 방어도.
+///
+/// 보상에서는 [previewBaseDamage]와 같은 이유로 굳음 보정을 적용하지 않는다.
+/// 현재 전투의 실제 방어도 표시는 [previewBlock]만 사용한다.
+int? previewBaseBlock(CardDef card) {
+  var total = 0;
+  var found = false;
+
+  for (final effect in card.effects) {
+    if (effect is! BlockEffect) continue;
+    found = true;
+    total += effect.value;
   }
 
   return found ? total : null;
