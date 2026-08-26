@@ -36,6 +36,8 @@ const _cardMinimumHeight = 132.0;
 const _cardSecondEffectLineAllowance = 12.0;
 // 예고와 체력 바의 좌우 경계를 맞춰 적의 다음 행동과 생존 상태를 함께 읽는다.
 const _enemyMeterWidth = 92.0;
+// M0 적은 임시 도형이므로, 기존 84dp 최소 크기에서 남는 정보 영역을 채운다.
+const _enemyMinimumBodyExtent = 84.0;
 
 double _cardReservedMinimumHeight(TextScaler textScaler, int effectCount) =>
     textScaler.scale(
@@ -225,6 +227,7 @@ class _StatusBar extends StatelessWidget {
     final seconds = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
 
     return Padding(
+      key: const ValueKey('status-bar'),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Row(
         children: [
@@ -341,6 +344,7 @@ class _EnemyArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      key: const ValueKey('enemy-area'),
       children: [
         Expanded(
           child: Row(
@@ -349,9 +353,9 @@ class _EnemyArea extends StatelessWidget {
               for (var i = 0; i < state.enemies.length; i++)
                 if (state.enemies[i].isAlive)
                   Expanded(
-                    child: Align(
-                      alignment: Alignment.topCenter,
+                    child: SizedBox.expand(
                       child: _EnemyView(
+                        bodyKey: ValueKey('enemy-body-${state.enemies[i].id}'),
                         enemy: state.enemies[i],
                         intentDamage: previewEnemyDamage(state, i),
                         incoming:
@@ -378,6 +382,7 @@ class _EnemyArea extends StatelessWidget {
 
 class _EnemyView extends StatelessWidget {
   const _EnemyView({
+    required this.bodyKey,
     required this.enemy,
     required this.intentDamage,
     required this.incoming,
@@ -385,6 +390,7 @@ class _EnemyView extends StatelessWidget {
     required this.onTap,
   });
 
+  final Key bodyKey;
   final Enemy enemy;
   final int? intentDamage;
   final int? incoming;
@@ -398,7 +404,7 @@ class _EnemyView extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: [
           // §3.1 — 다음 행동은 항상 아이콘으로 미리 표시한다.
           // M0은 임시로 글자다.
@@ -422,34 +428,39 @@ class _EnemyView extends StatelessWidget {
           ),
           const SizedBox(height: 6),
 
-          Container(
-            width: 84,
-            height: 84,
-            decoration: BoxDecoration(
-              color: const Color(0xFF4A3A44),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: targeting
-                    ? _attackColor
-                    : Colors.white.withValues(alpha: 0.2),
-                width: targeting ? 2.5 : 1,
+          Expanded(
+            child: Container(
+              key: bodyKey,
+              width: _enemyMinimumBodyExtent,
+              constraints: const BoxConstraints(
+                minHeight: _enemyMinimumBodyExtent,
               ),
-            ),
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(enemy.name, style: const TextStyle(fontSize: 15)),
-                if (incoming != null)
-                  Text(
-                    '−$incoming',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: _attackColor,
+              decoration: BoxDecoration(
+                color: const Color(0xFF4A3A44),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: targeting
+                      ? _attackColor
+                      : Colors.white.withValues(alpha: 0.2),
+                  width: targeting ? 2.5 : 1,
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(enemy.name, style: const TextStyle(fontSize: 15)),
+                  if (incoming != null)
+                    Text(
+                      '−$incoming',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: _attackColor,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 5),
@@ -565,6 +576,7 @@ class _EventStrip extends StatelessWidget {
     }
 
     return Container(
+      key: const ValueKey('event-strip'),
       height: 24,
       alignment: Alignment.center,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -601,6 +613,7 @@ class _HandArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      key: const ValueKey('hand-area'),
       mainAxisSize: MainAxisSize.min,
       children: [
         _ResourceRow(state: state),
