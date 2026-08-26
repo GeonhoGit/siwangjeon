@@ -129,11 +129,14 @@ RunMap generateActOneMap(int seed, {RunTuning tuning = RunTuning.m1}) {
   return _pickBranchWidth(rng, tuning);
 }
 
-/// 같은 깊이의 슬롯은 다음 깊이에 투영한 구간과 바로 오른쪽 슬롯만 잇는다.
+/// 같은 깊이의 슬롯은 다음 깊이에 투영한 구간과, 순서를 뒤집지 않는 오른쪽 슬롯만
+/// 잇는다.
 ///
 /// 투영 구간은 모든 출발 슬롯에 하나 이상의 출구를 주고 다음 깊이의 모든 슬롯을
 /// 덮는다. 따라서 시작에서 도달할 수 없는 노드와 보스에 닿지 못하는 막다른 길은
-/// 사후 보정 없이 생성되지 않는다. 구간의 순서가 유지되어 간선도 교차하지 않는다.
+/// 사후 보정 없이 생성되지 않는다. 오른쪽 슬롯은 바로 다음 출발 슬롯의 최소 후보를
+/// 넘지 않을 때만 더한다. 그래서 인접 후보 구간은 많아야 한 슬롯만 공유하고, 구간의
+/// 순서가 유지되어 간선도 교차하지 않는다.
 List<int> _nextNodeIdsForSlot({
   required int currentSlot,
   required int currentSlotCount,
@@ -159,7 +162,11 @@ List<int> _nextNodeIdsForSlot({
 
   assert(targetSlots.isNotEmpty);
   final rightNeighborSlot = targetSlots.last + 1;
+  final nextFirstTargetSlot = currentSlot + 1 < currentSlotCount
+      ? ((currentSlot + 1) * nextSlotCount) ~/ currentSlotCount
+      : nextSlotCount;
   if (rightNeighborSlot < nextSlotCount &&
+      rightNeighborSlot <= nextFirstTargetSlot &&
       (rightNeighborSlot - currentSlot).abs() <=
           tuning.maxAdjacentSlotDistance) {
     targetSlots.add(rightNeighborSlot);
