@@ -6,6 +6,7 @@ import 'package:siwangjeon/app/run_controller.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
+import 'package:siwangjeon/domain/model/status.dart';
 import 'package:siwangjeon/domain/run/run_action.dart';
 import 'package:siwangjeon/domain/run/run_content.dart';
 import 'package:siwangjeon/domain/run/run_engine.dart';
@@ -52,27 +53,56 @@ const _finisher = CardDef(
 
 const _rewardA = CardDef(
   id: 'ui_reward_a',
-  name: '보상 A',
+  name: '원한의 칼날',
   type: CardType.attack,
-  cost: 0,
-  effects: [DamageEffect(value: 1)],
+  cost: 1,
+  karma: 3,
+  effects: [
+    DamageEffect(value: 6),
+    ApplyStatusEffect(status: StatusId.grudge, stacks: 1),
+  ],
 );
 
 const _rewardB = CardDef(
   id: 'ui_reward_b',
-  name: '보상 B',
+  name: '고해',
   type: CardType.skill,
-  cost: 0,
-  effects: [BlockEffect(1)],
+  cost: 1,
+  targeted: false,
+  effects: [BlockEffect(2), LoseHpEffect(5), ChangeKarmaEffect(-8)],
 );
 
 const _rewardC = CardDef(
   id: 'ui_reward_c',
-  name: '보상 C',
-  type: CardType.curse,
-  cost: 0,
-  effects: [DamageEffect(value: 1)],
+  name: '집착의 맹세',
+  type: CardType.power,
+  cost: 2,
+  targeted: false,
+  effects: [
+    BlockEffect(2),
+    ApplyStatusEffect(
+      status: StatusId.strength,
+      stacks: 1,
+      target: EffectTarget.self,
+    ),
+    ApplyStatusEffect(
+      status: StatusId.dexterity,
+      stacks: 1,
+      target: EffectTarget.self,
+    ),
+  ],
 );
+
+const _rewardCards = [_rewardA, _rewardB, _rewardC];
+
+class _StaticRunController extends RunController {
+  _StaticRunController(this._session);
+
+  final RunSession _session;
+
+  @override
+  RunSession build() => _session;
+}
 
 Future<void> _pumpRun(
   WidgetTester tester, {
@@ -92,6 +122,30 @@ Future<void> _pumpRun(
       overrides: [
         runSeedFactoryProvider.overrideWithValue(() => seed),
         if (content != null) runContentProvider.overrideWithValue(content),
+      ],
+      child: const SiwangjeonApp(),
+    ),
+  );
+  await tester.pump();
+}
+
+Future<void> _pumpReward(
+  WidgetTester tester, {
+  required _TestDevice device,
+  required double textScale,
+}) async {
+  tester.view.physicalSize = device.physicalSize;
+  tester.view.devicePixelRatio = device.devicePixelRatio;
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
+  addTearDown(tester.view.reset);
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        runControllerProvider.overrideWith(
+          () => _StaticRunController(_rewardSession()),
+        ),
       ],
       child: const SiwangjeonApp(),
     ),
@@ -256,6 +310,12 @@ void main() {
       expect(reward.cards, hasLength(3));
       expect(find.text('전투 승리'), findsOneWidget);
       expect(find.textContaining('노잣돈'), findsOneWidget);
+      expect(find.text('피해 6 · 업 +3'), findsOneWidget);
+      expect(find.text('원한 1'), findsOneWidget);
+      expect(find.text('방어 2 · 체력 -5'), findsOneWidget);
+      expect(find.text('업 -8'), findsOneWidget);
+      expect(find.text('방어 2 · 기세 1'), findsOneWidget);
+      expect(find.text('굳음 1'), findsOneWidget);
 
       await tester.tap(find.byKey(ValueKey('reward-card-${chosen.id}')));
       await tester.pump();
@@ -280,6 +340,47 @@ void main() {
       expect(nextCombatCards.map((card) => card.id), contains(chosen.id));
     } finally {
       await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('보상 효과는 경계 기기와 글꼴 배율에서 세 장 모두 보인다', (tester) async {
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        await _pumpReward(tester, device: device, textScale: textScale);
+
+        try {
+          final viewport = _layoutBounds(tester, find.byType(ListView));
+          for (final card in _rewardCards) {
+            final cardBounds = _layoutBounds(
+              tester,
+              find.byKey(ValueKey('reward-card-${card.id}')),
+            );
+            expect(
+              cardBounds.height,
+              greaterThanOrEqualTo(48),
+              reason: device.name,
+            );
+            expect(cardBounds.top, greaterThanOrEqualTo(viewport.top));
+            expect(cardBounds.bottom, lessThanOrEqualTo(viewport.bottom));
+          }
+
+          final firstEffectLine = _layoutBounds(
+            tester,
+            find.byKey(const ValueKey('reward-card-effect-ui_reward_a-0')),
+          );
+          final secondEffectLine = _layoutBounds(
+            tester,
+            find.byKey(const ValueKey('reward-card-effect-ui_reward_a-1')),
+          );
+          expect(
+            secondEffectLine.top,
+            greaterThanOrEqualTo(firstEffectLine.bottom),
+          );
+          expect(tester.takeException(), isNull);
+        } finally {
+          await _disposeTree(tester);
+        }
+      }
     }
   });
 
@@ -383,6 +484,36 @@ RunSession _mapSession(RunMap map) {
   );
 }
 
+RunSession _rewardSession() {
+  const nodeId = 0;
+  return RunSession(
+    state: const RunState(seed: 1, characterId: 'm0', actionLog: []),
+    progress: RunProgress(
+      map: RunMap(
+        nodes: [
+          RunNode(
+            id: nodeId,
+            depth: 0,
+            type: RunNodeType.combat,
+            nextNodeIds: const [],
+          ),
+        ],
+      ),
+      visitedNodeIds: const [nodeId],
+      hp: 80,
+      maxHp: 80,
+      karma: 0,
+      money: 15,
+      deck: const [],
+      pendingCardReward: CardReward(nodeId: nodeId, cards: _rewardCards),
+    ),
+    legalActions: [
+      for (final card in _rewardCards)
+        ChooseCardReward(nodeId: nodeId, cardId: card.id),
+    ],
+  );
+}
+
 void _expectCenteredRows(
   RunMap map,
   Map<int, Offset> centers,
@@ -466,5 +597,5 @@ RunContent _victoryContent() => RunContent(
         pattern: const [EnemyDefend(0)],
       ),
   ],
-  cardRewardPool: const [_rewardA, _rewardB, _rewardC],
+  cardRewardPool: _rewardCards,
 );

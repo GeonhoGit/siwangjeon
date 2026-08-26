@@ -9,11 +9,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/combat_controller.dart';
 import '../app/run_controller.dart';
+import '../domain/combat/combat_engine.dart';
 import '../domain/model/card.dart';
 import '../domain/run/run_action.dart';
 import '../domain/run/run_map.dart';
 import '../domain/run/run_node_type.dart';
 import 'combat_screen.dart';
+import 'labels.dart';
 
 const _mapNodeDiameter = 56.0;
 const _mapRowExtent = 96.0;
@@ -416,7 +418,17 @@ class _RewardScreen extends StatelessWidget {
             ),
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
-              child: Text('카드 하나를 고르세요'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('카드 하나를 고르세요'),
+                  SizedBox(height: 4),
+                  Text(
+                    '피해·방어는 상태와 업 보정 전 기본 수치입니다',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
             ),
             Expanded(
               child: ListView.separated(
@@ -449,6 +461,18 @@ class _RewardCardButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 보상에는 진행 중인 전투 상태가 없다. 기본 피해·방어 합산은 엔진에
+    // 맡기고, 화면은 그 결과와 공용 효과 표기만 배치한다.
+    final effects = cardEffectLabels(
+      card,
+      damage: previewBaseDamage(card),
+      block: previewBaseBlock(card),
+    );
+    final effectLines = [
+      effects.take(2).join(' · '),
+      if (effects.length > 2) effects.skip(2).join(' · '),
+    ];
+
     return FilledButton(
       key: ValueKey('reward-card-${card.id}'),
       onPressed: onChoose,
@@ -458,11 +482,20 @@ class _RewardCardButton extends StatelessWidget {
         padding: const EdgeInsets.all(16),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(card.name, style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           Text('${_cardTypeName(card.type)} · 비용 ${card.cost}'),
+          if (effectLines.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (var index = 0; index < effectLines.length; index++)
+              Text(
+                key: ValueKey('reward-card-effect-${card.id}-$index'),
+                effectLines[index],
+              ),
+          ],
         ],
       ),
     );
