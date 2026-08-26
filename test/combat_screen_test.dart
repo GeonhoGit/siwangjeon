@@ -79,6 +79,12 @@ Rect paintBounds(WidgetTester tester, Finder finder) {
   return MatrixUtils.transformRect(box.getTransformTo(null), box.paintBounds);
 }
 
+Rect layoutBounds(WidgetTester tester, Finder finder) {
+  expect(finder, findsOneWidget);
+  final box = tester.renderObject<RenderBox>(finder);
+  return box.localToGlobal(Offset.zero) & box.size;
+}
+
 void expectHandIsOnScreenAndClearOfEndTurn(WidgetTester tester, int cardCount) {
   final screen = _pixel8PhysicalSize / _pixel8DevicePixelRatio;
   final endTurn = paintBounds(tester, find.byKey(const ValueKey('end-turn')));
@@ -90,6 +96,18 @@ void expectHandIsOnScreenAndClearOfEndTurn(WidgetTester tester, int cardCount) {
     expect(card.top, greaterThanOrEqualTo(0));
     expect(card.bottom, lessThanOrEqualTo(screen.height));
     expect(card.overlaps(endTurn), isFalse);
+  }
+}
+
+void expectHandIsInsideFlow(WidgetTester tester, int cardCount) {
+  final flow = layoutBounds(tester, find.byType(Flow));
+
+  for (var index = 0; index < cardCount; index++) {
+    final card = paintBounds(tester, find.byKey(ValueKey('hand-card-$index')));
+    expect(card.left, greaterThanOrEqualTo(flow.left));
+    expect(card.top, greaterThanOrEqualTo(flow.top));
+    expect(card.right, lessThanOrEqualTo(flow.right));
+    expect(card.bottom, lessThanOrEqualTo(flow.bottom));
   }
 }
 
@@ -247,13 +265,63 @@ void main() {
             find.byKey(ValueKey('hand-card-$selectedIndex')),
           );
           await tester.tapAt(selected.center);
-          await tester.pump(const Duration(milliseconds: 120));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 60));
 
           expect(tester.takeException(), isNull);
           expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+          expectHandIsInsideFlow(tester, 5);
+
+          await tester.pump(const Duration(milliseconds: 60));
+
+          expect(tester.takeException(), isNull);
+          expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+          expectHandIsInsideFlow(tester, 5);
         } finally {
           await disposeTree(tester);
         }
+      }
+    }
+  });
+
+  testWidgets('선택해도 다른 손패 카드의 중심은 움직이지 않는다', (tester) async {
+    for (final cardCount in [2, 5]) {
+      final selectedIndex = cardCount ~/ 2;
+      await pumpCombat(
+        tester,
+        controller: () =>
+            _FixedHandCombatController(List.filled(cardCount, bladeOfGrudge)),
+      );
+
+      try {
+        final beforeCenters = [
+          for (var index = 0; index < cardCount; index++)
+            paintBounds(
+              tester,
+              find.byKey(ValueKey('hand-card-$index')),
+            ).center.dx,
+        ];
+        final selected = find.byKey(ValueKey('hand-card-$selectedIndex'));
+        await tester.tapAt(paintBounds(tester, selected).center);
+        await tester.pump();
+
+        for (final elapsed in const [
+          Duration(milliseconds: 60),
+          Duration(milliseconds: 60),
+        ]) {
+          await tester.pump(elapsed);
+
+          for (var index = 0; index < cardCount; index++) {
+            if (index == selectedIndex) continue;
+            final center = paintBounds(
+              tester,
+              find.byKey(ValueKey('hand-card-$index')),
+            ).center.dx;
+            expect(center, closeTo(beforeCenters[index], 0.01));
+          }
+        }
+      } finally {
+        await disposeTree(tester);
       }
     }
   });
