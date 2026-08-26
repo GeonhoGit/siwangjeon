@@ -892,7 +892,6 @@ class _HandFanCardGeometry {
     required this.angle,
     required this.scale,
     required this.baseProjectedWidth,
-    required this.projectedWidth,
     required this.projectedHeight,
     required this.selectedLift,
   });
@@ -902,7 +901,6 @@ class _HandFanCardGeometry {
   final double angle;
   final double scale;
   final double baseProjectedWidth;
-  final double projectedWidth;
   final double projectedHeight;
   final double selectedLift;
 
@@ -924,10 +922,6 @@ class _HandFanCardGeometry {
     final baseProjectedWidth =
         size.width * math.cos(baseAngle.abs()) +
         size.height * math.sin(baseAngle.abs());
-    final projectedWidth =
-        scale *
-        (size.width * math.cos(angle.abs()) +
-            size.height * math.sin(angle.abs()));
     final projectedHeight =
         scale *
         (size.height * math.cos(angle.abs()) +
@@ -939,7 +933,6 @@ class _HandFanCardGeometry {
       angle: angle,
       scale: scale,
       baseProjectedWidth: baseProjectedWidth,
-      projectedWidth: projectedWidth,
       projectedHeight: projectedHeight,
       selectedLift: selected ? _HandFanLayout._selectedLift : 0.0,
     );
