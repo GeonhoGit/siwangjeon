@@ -29,6 +29,7 @@ class CombatState {
     required this.discardPile,
     required this.enemies,
     required this.rng,
+    this.activePowers = const [],
     this.statuses = const {},
     this.outcome,
   });
@@ -60,6 +61,13 @@ class CombatState {
   final List<CardDef> drawPile;
   final List<CardDef> discardPile;
 
+  /// 사용한 힘 카드는 전투가 끝날 때까지 이 영역에 남는다(§3.5).
+  ///
+  /// 효과는 상태에 이미 적용되지만, 카드 자체도 상태에 남겨야 덱·버림더미와
+  /// 재섞기 결과가 액션 로그 재생 때까지 동일하다. 이 목록은 드로우 경로에
+  /// 합류하지 않으므로 같은 힘 카드를 전투 중 다시 뽑을 수 없다.
+  final List<CardDef> activePowers;
+
   final List<Enemy> enemies;
 
   /// 플레이어에게 걸린 상태 효과. 스택이 0이 되면 항목 자체를 지운다.
@@ -88,6 +96,7 @@ class CombatState {
     List<CardDef>? hand,
     List<CardDef>? drawPile,
     List<CardDef>? discardPile,
+    List<CardDef>? activePowers,
     List<Enemy>? enemies,
     Map<StatusId, int>? statuses,
     Rng? rng,
@@ -103,6 +112,7 @@ class CombatState {
       hand: hand ?? this.hand,
       drawPile: drawPile ?? this.drawPile,
       discardPile: discardPile ?? this.discardPile,
+      activePowers: activePowers ?? this.activePowers,
       enemies: enemies ?? this.enemies,
       statuses: statuses ?? this.statuses,
       rng: rng ?? this.rng,
