@@ -11,9 +11,11 @@ import 'package:siwangjeon/domain/model/status.dart';
 import 'package:siwangjeon/domain/run/run_action.dart';
 import 'package:siwangjeon/domain/run/run_content.dart';
 import 'package:siwangjeon/domain/run/run_engine.dart';
+import 'package:siwangjeon/domain/run/run_event.dart';
 import 'package:siwangjeon/domain/run/run_map.dart';
 import 'package:siwangjeon/domain/run/run_node_type.dart';
 import 'package:siwangjeon/domain/run/run_state.dart';
+import 'package:siwangjeon/domain/run/run_tuning.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
 import 'package:siwangjeon/ui/run_screen.dart';
 
@@ -111,6 +113,7 @@ Future<void> _pumpRun(
   _TestDevice device = _pixel8,
   double textScale = 1.0,
   RunContent? content,
+  RunState? initialState,
 }) async {
   tester.view.physicalSize = device.physicalSize;
   tester.view.devicePixelRatio = device.devicePixelRatio;
@@ -123,6 +126,8 @@ Future<void> _pumpRun(
       overrides: [
         runSeedFactoryProvider.overrideWithValue(() => seed),
         if (content != null) runContentProvider.overrideWithValue(content),
+        if (initialState != null)
+          runInitialStateProvider.overrideWithValue(initialState),
       ],
       child: const SiwangjeonApp(),
     ),
@@ -173,12 +178,24 @@ Future<void> _moveUntilCombat(WidgetTester tester) async {
     final moves = session.legalActions.whereType<MoveToNode>();
     if (moves.isNotEmpty) {
       await tester.tap(find.byKey(ValueKey('run-node-${moves.first.nodeId}')));
+    } else if (find
+        .byKey(const ValueKey('shop-screen'))
+        .evaluate()
+        .isNotEmpty) {
+      await tester.tap(find.byKey(const ValueKey('shop-leave')));
+    } else if (find
+        .byKey(const ValueKey('wild-camp-screen'))
+        .evaluate()
+        .isNotEmpty) {
+      await tester.tap(find.byKey(const ValueKey('wild-camp-rest')));
+    } else if (find
+        .byKey(const ValueKey('event-screen'))
+        .evaluate()
+        .isNotEmpty) {
+      final action = session.legalActions.whereType<ChooseEventOption>().first;
+      await tester.tap(find.byKey(ValueKey('event-choice-${action.choiceId}')));
     } else {
-      // 이번 라운드는 노드 내용 UI를 만들지 않는다. 전투·보상 UI 검증은
-      // 도메인이 준 현재 비전투 선택 하나를 직접 기록해 다음 전투로 진행한다.
-      _containerFor(tester)
-          .read(runControllerProvider.notifier)
-          .dispatch(session.legalActions.first);
+      fail('지도와 비전투 선택 화면 밖에서 전투를 기다렸다');
     }
     await tester.pump();
   }
@@ -440,6 +457,346 @@ void main() {
       }
     }
   });
+
+  testWidgets('상점은 상품 효과를 보이고 거래와 나가기를 순서대로 기록한다', (tester) async {
+    final seed = _seedForFirstNode(RunNodeType.shop);
+    final content = _nonCombatContent(startingMoney: 100);
+    await _pumpRun(
+      tester,
+      seed: seed,
+      content: content,
+      initialState: _enteredFirstNode(seed),
+    );
+
+    try {
+      final container = _containerFor(tester);
+      final before = container.read(runControllerProvider);
+      final card = before.progress.pendingShop!.cards.first;
+
+      expect(find.byKey(const ValueKey('shop-screen')), findsOneWidget);
+      expect(
+        find.byKey(ValueKey('shop-card-effect-${card.id}-0')),
+        findsOneWidget,
+      );
+      expect(find.text('피해 6 · 업 +3'), findsOneWidget);
+
+      await tester.tap(find.byKey(ValueKey('shop-card-${card.id}')));
+      await tester.pump();
+
+      expect(
+        container.read(runControllerProvider).progress.money,
+        100 - RunTuning.m1.shopCardPrice,
+      );
+      expect(find.byKey(const ValueKey('shop-screen')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('shop-leave')));
+      await tester.pump();
+      expect(find.byType(RunMapScreen), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('상점은 legalRunActions에 없는 구매와 제거에 반응하지 않는다', (tester) async {
+    final seed = _seedForFirstNode(RunNodeType.shop);
+    await _pumpRun(
+      tester,
+      seed: seed,
+      content: _nonCombatContent(),
+      initialState: _enteredFirstNode(seed),
+    );
+
+    try {
+      final container = _containerFor(tester);
+      final before = container.read(runControllerProvider);
+      final shopCard = before.progress.pendingShop!.cards.first;
+      final deckCard = before.progress.deckCards.first;
+
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(ValueKey('shop-card-${shopCard.id}')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(ValueKey('shop-remove-${deckCard.instanceId}')),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      await tester.tap(find.byKey(ValueKey('shop-card-${shopCard.id}')));
+      await tester.tap(
+        find.byKey(ValueKey('shop-remove-${deckCard.instanceId}')),
+      );
+      await tester.pump();
+
+      expect(container.read(runControllerProvider).state, same(before.state));
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('상점 제거는 같은 이름 카드 중 누른 인스턴스만 지운다', (tester) async {
+    final seed = _seedForFirstNode(RunNodeType.shop);
+    await _pumpRun(
+      tester,
+      seed: seed,
+      content: _nonCombatContent(
+        startingMoney: RunTuning.m1.shopRemoveCardPrice,
+        deck: const [_rewardA, _rewardA],
+      ),
+      initialState: _enteredFirstNode(seed),
+    );
+
+    try {
+      final container = _containerFor(tester);
+      final before = container.read(runControllerProvider);
+      final removed = before.progress.deckCards.first;
+      final retained = before.progress.deckCards.last;
+
+      await tester.tap(
+        find.byKey(ValueKey('shop-remove-${removed.instanceId}')),
+      );
+      await tester.pump();
+
+      final after = container.read(runControllerProvider).progress;
+      expect(after.deckCards, hasLength(1));
+      expect(after.deckCards.single.instanceId, retained.instanceId);
+      expect(
+        (container.read(runControllerProvider).state.actionLog.last
+                as RemoveShopCard)
+            .cardInstanceId,
+        removed.instanceId,
+      );
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('야장의 휴식과 참회는 각각 화면 선택으로 끝난다', (tester) async {
+    final route = _eventThenWildCampRoute();
+    final wardenEvent = m1Events.singleWhere(
+      (event) => event.id == 'event_wardens_favor',
+    );
+    await _pumpRun(
+      tester,
+      seed: route.seed,
+      content: _nonCombatContent(events: [wardenEvent]),
+    );
+
+    try {
+      final container = _containerFor(tester);
+      final firstNodeId = container
+          .read(runControllerProvider)
+          .progress
+          .map
+          .nodes
+          .first
+          .id;
+      await tester.tap(find.byKey(ValueKey('run-node-$firstNodeId')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('event-screen')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('event-choice-trial')));
+      await tester.pump();
+      expect(container.read(runControllerProvider).progress.hp, 68);
+
+      await tester.tap(
+        find.byKey(ValueKey('run-node-${route.wildCampNodeId}')),
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('wild-camp-screen')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('wild-camp-rest')));
+      await tester.pump();
+      expect(container.read(runControllerProvider).progress.hp, 80);
+      expect(find.byType(RunMapScreen), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+
+    final wildSeed = _seedForFirstNode(RunNodeType.wildCamp);
+    await _pumpRun(
+      tester,
+      seed: wildSeed,
+      content: _nonCombatContent(
+        startingKarma: RunTuning.m1.wildCampRepentKarmaCleanse,
+        startingMoney: RunTuning.m1.wildCampRepentMoneyCost,
+      ),
+      initialState: _enteredFirstNode(wildSeed),
+    );
+
+    try {
+      final container = _containerFor(tester);
+      await tester.tap(find.byKey(const ValueKey('wild-camp-repent')));
+      await tester.pump();
+
+      expect(container.read(runControllerProvider).progress.karma, 0);
+      expect(container.read(runControllerProvider).progress.money, 0);
+      expect(find.byType(RunMapScreen), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('사건은 legalRunActions가 낸 선택지만 보이고 지옥의 장부 분기를 숨긴다', (tester) async {
+    final seed = _seedForFirstNode(RunNodeType.event);
+    final ledger = m1Events.singleWhere(
+      (event) => event.id == 'event_hell_ledger',
+    );
+
+    await _pumpRun(
+      tester,
+      seed: seed,
+      content: _nonCombatContent(startingMoney: 100, events: [ledger]),
+      initialState: _enteredFirstNode(seed),
+    );
+
+    try {
+      expect(find.byKey(const ValueKey('event-screen')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('event-choice-falsify')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('event-choice-seal')), findsOneWidget);
+      expect(find.byKey(const ValueKey('event-choice-confess')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('event-choice-seal')));
+      await tester.pump();
+      expect(find.byType(RunMapScreen), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+
+    await _pumpRun(
+      tester,
+      seed: seed,
+      content: _nonCombatContent(
+        startingKarma: 50,
+        startingMoney: 100,
+        events: [ledger],
+      ),
+      initialState: _enteredFirstNode(seed),
+    );
+
+    try {
+      expect(find.byKey(const ValueKey('event-choice-falsify')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('event-choice-confess')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('event-choice-seal')), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('세 갈래 사건과 긴 상점 덱은 경계 기기와 글자 배율에서 넘치지 않는다', (tester) async {
+    final shopSeed = _seedForFirstNode(RunNodeType.shop);
+    final wildSeed = _seedForFirstNode(RunNodeType.wildCamp);
+    final eventSeed = _seedForFirstNode(RunNodeType.event);
+    final cup = m1Events.singleWhere(
+      (event) => event.id == 'event_cup_of_oblivion',
+    );
+
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        await _pumpRun(
+          tester,
+          seed: shopSeed,
+          device: device,
+          textScale: textScale,
+          content: _nonCombatContent(
+            startingMoney: 100,
+            deck: List<CardDef>.filled(16, _rewardA),
+          ),
+          initialState: _enteredFirstNode(shopSeed),
+        );
+        try {
+          final shop = _containerFor(
+            tester,
+          ).read(runControllerProvider).progress.pendingShop!;
+          final deckCard = _containerFor(
+            tester,
+          ).read(runControllerProvider).progress.deckCards.first;
+          _expectMinimumTapTargets(
+            tester,
+            find.byKey(ValueKey('shop-card-${shop.cards.first.id}')),
+          );
+          _expectMinimumTapTargets(
+            tester,
+            find.byKey(ValueKey('shop-remove-${deckCard.instanceId}')),
+          );
+          await tester.scrollUntilVisible(
+            find.byKey(const ValueKey('shop-leave')),
+            300,
+            scrollable: find.byType(Scrollable),
+          );
+          _expectMinimumTapTargets(
+            tester,
+            find.byKey(const ValueKey('shop-leave')),
+          );
+          expect(tester.takeException(), isNull, reason: device.name);
+        } finally {
+          await _disposeTree(tester);
+        }
+
+        await _pumpRun(
+          tester,
+          seed: wildSeed,
+          device: device,
+          textScale: textScale,
+          content: _nonCombatContent(
+            startingKarma: RunTuning.m1.wildCampRepentKarmaCleanse,
+            startingMoney: RunTuning.m1.wildCampRepentMoneyCost,
+          ),
+          initialState: _enteredFirstNode(wildSeed),
+        );
+        try {
+          _expectMinimumTapTargets(
+            tester,
+            find.byKey(const ValueKey('wild-camp-rest')),
+          );
+          _expectMinimumTapTargets(
+            tester,
+            find.byKey(const ValueKey('wild-camp-repent')),
+          );
+          expect(tester.takeException(), isNull, reason: device.name);
+        } finally {
+          await _disposeTree(tester);
+        }
+
+        await _pumpRun(
+          tester,
+          seed: eventSeed,
+          device: device,
+          textScale: textScale,
+          content: _nonCombatContent(startingKarma: 5, events: [cup]),
+          initialState: _enteredFirstNode(eventSeed),
+        );
+        try {
+          final visibleChoices = find.byWidgetPredicate(
+            (widget) =>
+                widget is FilledButton &&
+                widget.key is ValueKey<String> &&
+                (widget.key as ValueKey<String>).value.startsWith(
+                  'event-choice-',
+                ),
+          );
+          expect(visibleChoices, findsNWidgets(3));
+          _expectMinimumTapTargets(tester, visibleChoices);
+          expect(tester.takeException(), isNull, reason: device.name);
+        } finally {
+          await _disposeTree(tester);
+        }
+      }
+    }
+  });
 }
 
 List<RunNode> _nodesAtThreeSlotDepth(RunMap map) {
@@ -590,6 +947,68 @@ void _expectNonCrossingEdgesInPixels(
         }
       }
     }
+  }
+}
+
+RunContent _nonCombatContent({
+  int startingMoney = 0,
+  int startingKarma = 0,
+  List<CardDef>? deck,
+  List<RunEventDef>? events,
+}) => RunContent(
+  maxHp: 80,
+  deck: deck ?? const [_rewardA, _rewardA],
+  encounterPool: [
+    Enemy(
+      id: 'non_combat_enemy',
+      name: '검증용 적',
+      hp: 1,
+      maxHp: 1,
+      pattern: const [EnemyDefend(0)],
+    ),
+  ],
+  startingMoney: startingMoney,
+  startingKarma: startingKarma,
+  cardRewardPool: _rewardCards,
+  shopCardPool: _rewardCards,
+  events: events ?? m1Events,
+);
+
+int _seedForFirstNode(RunNodeType type) {
+  for (var seed = 0; seed < 10000; seed++) {
+    if (generateActOneMap(seed).nodes.first.type == type) return seed;
+  }
+  throw StateError('첫 노드가 $type인 시드를 찾지 못했다');
+}
+
+RunState _enteredFirstNode(int seed) {
+  final firstNode = generateActOneMap(seed).nodes.first;
+  return RunState(
+    seed: seed,
+    characterId: 'm0',
+    actionLog: [MoveToNode(nodeId: firstNode.id)],
+  );
+}
+
+({int seed, int wildCampNodeId}) _eventThenWildCampRoute() {
+  for (var seed = 0; seed < 10000; seed++) {
+    final map = generateActOneMap(seed);
+    final firstNode = map.nodes.first;
+    if (firstNode.type != RunNodeType.event) continue;
+    for (final nodeId in firstNode.nextNodeIds) {
+      if (map.nodeById(nodeId).type == RunNodeType.wildCamp) {
+        return (seed: seed, wildCampNodeId: nodeId);
+      }
+    }
+  }
+  throw StateError('사건 뒤 야장 경로를 찾지 못했다');
+}
+
+void _expectMinimumTapTargets(WidgetTester tester, Finder finder) {
+  for (var index = 0; index < finder.evaluate().length; index++) {
+    final bounds = _layoutBounds(tester, finder.at(index));
+    expect(bounds.width, greaterThanOrEqualTo(48));
+    expect(bounds.height, greaterThanOrEqualTo(48));
   }
 }
 
