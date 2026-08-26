@@ -334,9 +334,57 @@ Enemy wongwi() => const Enemy(
   pattern: [EnemyInflict(StatusId.weak, 1), EnemyAttack(4, times: 2)],
 );
 
+/// 독귀(毒鬼) — 막아도 사라지지 않는 중독을 남긴 뒤 버틴다.
+///
+/// 중독은 플레이어 턴 시작에 방어도를 무시하므로, 이 적의 질문은 "긴 전투를
+/// 감수할 것인가, 지금 밀어붙여 중독 누적을 끊을 것인가"다. 아귀의 큰 한 방과
+/// 달리 단순 방어만으로는 답이 되지 않는다.
+Enemy dokgwi() => const Enemy(
+  id: 'enemy_dokgwi',
+  name: '독귀',
+  hp: 16,
+  maxHp: 16,
+  pattern: [EnemyInflict(StatusId.poison, 2), EnemyDefend(4), EnemyAttack(7)],
+);
+
+/// 야차(夜叉) — 자기 기세를 쌓은 뒤 두 번 때린다.
+///
+/// 다음 예고가 기세 강화면 약화로 피해를 낮출지, 강화된 연타 전에 먼저 처치할지를
+/// 묻는다. 원귀가 플레이어의 공격을 약하게 만드는 적이라면, 야차는 적 공격 자체를
+/// 상태 카드로 꺾어야 하는 적이다.
+Enemy yacha() => const Enemy(
+  id: 'enemy_yacha',
+  name: '야차',
+  hp: 22,
+  maxHp: 22,
+  pattern: [
+    EnemyInflict(StatusId.strength, 2, target: EffectTarget.self),
+    EnemyAttack(5, times: 2),
+    EnemyDefend(6),
+  ],
+);
+
+/// 나찰(羅刹) — 방어를 먼저 쌓고 취약 뒤에 큰 한 방을 예고한다.
+///
+/// 이 적의 질문은 "방어도에 공격을 버릴 것인가, 독·원한을 심어 넘길 것인가"다.
+/// 이어지는 취약+강공은 아귀처럼 바로 막기보다, 약화나 큰 방어를 미리 준비하게 한다.
+Enemy nachal() => const Enemy(
+  id: 'enemy_nachal',
+  name: '나찰',
+  hp: 26,
+  maxHp: 26,
+  pattern: [
+    EnemyDefend(10),
+    EnemyInflict(StatusId.vulnerable, 2),
+    EnemyAttack(11),
+  ],
+);
+
 /// M0의 기본 조우. §8.1의 2번 질문("세로 화면에서 카드 5장 + 적이
-/// 답답하지 않은가")을 보려면 적이 둘 이상이어야 한다.
-List<Enemy> defaultEncounter() => [agwi(), wongwi()];
+/// 답답하지 않은가")은 적 3마리를 실제로 보아야 물을 수 있다. 중독·약화·큰 예고를
+/// 함께 둬 한 화면에서 서로 다른 다음 행동을 읽게 하되, 체력 합계는 M0 한 전투가
+/// 2~3분을 넘기지 않도록 58로 제한한다.
+List<Enemy> defaultEncounter() => [agwi(), wongwi(), dokgwi()];
 
 /// 플레이어 시작 체력 (§3.2 — 체력 범위 0~80).
 const startingHp = 80;
