@@ -36,7 +36,7 @@ class CardDef {
     this.rarity = CardRarity.common,
     this.karma = 0,
     this.targeted = true,
-  });
+  }) : assert(karma >= 0, '고정 업 비용은 음수가 될 수 없다. 정화에는 ChangeKarmaEffect를 쓴다.');
 
   final String id;
   final String name;
@@ -46,7 +46,10 @@ class CardDef {
   /// 기력(氣) 소모량. 매 턴 3이 회복되므로(§3.2) 사실상 0~3이다.
   final int cost;
 
-  /// 사용 시 누적되는 업(業). §3.3의 "강력한 카드는 업 +1~+5".
+  /// 효과가 모두 해결된 뒤 부과하는 고정 업(業) 비용.
+  ///
+  /// §3.3의 "강력한 카드는 업 +1~+5"를 표현한다. 정화처럼 카드 해결 중
+  /// 업을 바꿔야 할 때는 [ChangeKarmaEffect]를 써서 두 역할을 섞지 않는다.
   final int karma;
 
   /// 적을 지정해야 하는 카드인지. 방어 카드처럼 대상이 없으면 false.

@@ -257,6 +257,182 @@ void main() {
     });
   });
 
+  group('정화·드로우·기력 효과', () {
+    const purification = CardDef(
+      id: 'test_purification',
+      name: '시험용 정화',
+      type: CardType.skill,
+      cost: 0,
+      targeted: false,
+      effects: [LoseHpEffect(6), ChangeKarmaEffect(-20)],
+    );
+    const karmaOffering = CardDef(
+      id: 'test_karma_offering',
+      name: '시험용 업 부과',
+      type: CardType.skill,
+      cost: 0,
+      targeted: false,
+      effects: [ChangeKarmaEffect(20)],
+    );
+    const drawTwo = CardDef(
+      id: 'test_draw_two',
+      name: '시험용 두 장 드로우',
+      type: CardType.skill,
+      cost: 0,
+      targeted: false,
+      effects: [DrawCardsEffect(2)],
+    );
+    const drawThree = CardDef(
+      id: 'test_draw_three',
+      name: '시험용 세 장 드로우',
+      type: CardType.skill,
+      cost: 0,
+      targeted: false,
+      effects: [DrawCardsEffect(3)],
+    );
+
+    test('정화는 업을 0 아래로 내리지 않고 체력 대가를 방어도와 무관하게 낸다', () {
+      final initial = start(deck: deckOf(strike, 10), karma: 10).copyWith(
+        block: 5,
+        hand: const [purification],
+        drawPile: const [],
+        discardPile: const [],
+      );
+
+      final result = applyAction(initial, const PlayCard(handIndex: 0));
+
+      expect(result.state.karma, 0);
+      expect(result.state.hp, 74, reason: '정화 비용은 방어도가 흡수하지 않는다');
+      expect(result.state.block, 5);
+      expect(result.events.whereType<KarmaGained>().single.amount, -10);
+      final cost = result.events.whereType<DamageDealt>().single;
+      expect(cost.amount, 6);
+      expect(cost.blocked, 0);
+    });
+
+    test('효과로 늘린 업도 상한을 넘지 않는다', () {
+      final initial = start(deck: deckOf(strike, 10), karma: 95).copyWith(
+        hand: const [karmaOffering],
+        drawPile: const [],
+        discardPile: const [],
+      );
+
+      final result = applyAction(initial, const PlayCard(handIndex: 0));
+
+      expect(result.state.karma, 100);
+      expect(result.events.whereType<KarmaGained>().single.amount, 5);
+    });
+
+    test('드로우 효과는 요청한 장수를 손패에 더한다', () {
+      final initial = start(deck: deckOf(drawTwo, 10));
+
+      final result = applyAction(initial, const PlayCard(handIndex: 0));
+
+      expect(result.state.hand.length, 6, reason: '사용한 1장 뒤 2장을 뽑는다');
+      expect(result.events.whereType<CardsDrawn>().single.cards.length, 2);
+    });
+
+    test('드로우 효과도 덱이 모자라면 버림더미를 재셔플한다', () {
+      final initial = start(deck: deckOf(strike, 5)).copyWith(
+        hand: const [drawThree],
+        drawPile: const [strike],
+        discardPile: const [defend, strike],
+      );
+
+      final result = applyAction(initial, const PlayCard(handIndex: 0));
+
+      expect(result.events.whereType<DeckReshuffled>().single.count, 2);
+      expect(result.events.whereType<CardsDrawn>().single.cards.length, 3);
+      expect(result.state.hand.length, 3);
+      expect(result.state.drawPile, isEmpty);
+      expect(result.state.discardPile.single.id, drawThree.id);
+    });
+
+    test('드로우가 있는 같은 액션 열은 같은 최종 상태를 낸다', () {
+      final deck = List.generate(
+        8,
+        (index) => CardDef(
+          id: 'test_draw_$index',
+          name: '시험용 드로우 $index',
+          type: CardType.skill,
+          cost: 1,
+          targeted: false,
+          effects: const [DrawCardsEffect(2)],
+        ),
+      );
+      const actions = <CombatAction>[
+        PlayCard(handIndex: 0),
+        PlayCard(handIndex: 0),
+        PlayCard(handIndex: 0),
+        EndTurn(),
+        PlayCard(handIndex: 0),
+        PlayCard(handIndex: 0),
+        PlayCard(handIndex: 0),
+        EndTurn(),
+      ];
+
+      CombatState replay() {
+        var state = start(deck: deck, seed: 20260826);
+        for (final action in actions) {
+          state = applyAction(state, action).state;
+        }
+        return state;
+      }
+
+      final a = replay();
+      final b = replay();
+
+      expect(a.hp, b.hp);
+      expect(a.energy, b.energy);
+      expect(a.karma, b.karma);
+      expect(a.turn, b.turn);
+      expect(a.rng, b.rng, reason: '드로우 재셔플 뒤 난수기 상태도 같아야 한다');
+      expect(
+        a.hand.map((card) => card.id).toList(),
+        b.hand.map((card) => card.id).toList(),
+      );
+      expect(
+        a.drawPile.map((card) => card.id).toList(),
+        b.drawPile.map((card) => card.id).toList(),
+      );
+      expect(
+        a.discardPile.map((card) => card.id).toList(),
+        b.discardPile.map((card) => card.id).toList(),
+      );
+    });
+
+    test('기력 회복은 같은 턴에 고비용 카드를 더 낼 수 있게 한다', () {
+      const recoverEnergy = CardDef(
+        id: 'test_recover_energy',
+        name: '시험용 기력 회복',
+        type: CardType.skill,
+        cost: 1,
+        targeted: false,
+        effects: [GainEnergyEffect(2)],
+      );
+      const costlyGuard = CardDef(
+        id: 'test_costly_guard',
+        name: '시험용 고비용 수비',
+        type: CardType.skill,
+        cost: 3,
+        targeted: false,
+        effects: [BlockEffect(1)],
+      );
+      final initial = start(deck: deckOf(strike, 10)).copyWith(
+        hand: const [recoverEnergy, costlyGuard],
+        drawPile: const [],
+        discardPile: const [],
+      );
+
+      var state = applyAction(initial, const PlayCard(handIndex: 0)).state;
+      expect(state.energy, 4, reason: '3 - 사용 비용 1 + 회복 2');
+      expect(legalActions(state).whereType<PlayCard>().single.handIndex, 0);
+
+      state = applyAction(state, const PlayCard(handIndex: 0)).state;
+      expect(state.energy, 1);
+    });
+  });
+
   group('원한 — 업을 전투 안에서 체감시키는 장치', () {
     test('원한 스택은 턴 종료 시 업에 비례한 피해를 넣는다', () {
       var state = start(
