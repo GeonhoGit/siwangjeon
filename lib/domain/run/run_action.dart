@@ -55,3 +55,58 @@ final class ChooseCardReward extends RunAction {
   /// 선택한 카드 정의의 안정적인 콘텐츠 id.
   final String cardId;
 }
+
+/// 상점 상품 한 장을 산다. 상품 후보 자체는 노드별 reward 시드에서 다시 만들고,
+/// 로그에는 선택한 콘텐츠 id만 남긴다.
+final class BuyShopCard extends RunAction {
+  const BuyShopCard({required this.nodeId, required this.cardId});
+
+  final int nodeId;
+  final String cardId;
+}
+
+/// 상점 비용을 내고 덱의 한 카드 인스턴스를 제거한다.
+///
+/// 카드 id만으로는 「타격」처럼 중복된 카드를 구별할 수 없고, 덱 인덱스는 앞선
+/// 로그가 바뀌면 다른 카드를 가리킬 수 있다. 따라서 시작 덱 슬롯·보상 노드·상점
+/// 상품에서 결정론적으로 만든 [cardInstanceId]를 기록한다. 이 값은 재생 중인 덱
+/// 구성 순서와 무관하게 같은 물리적 카드 한 장을 가리킨다.
+final class RemoveShopCard extends RunAction {
+  const RemoveShopCard({required this.nodeId, required this.cardInstanceId});
+
+  final int nodeId;
+  final String cardInstanceId;
+}
+
+/// 상점에서 더 사거나 제거하지 않고 선택을 끝낸다.
+///
+/// 상점은 여러 거래를 허용하므로 이 액션이 있어야 선택을 마친 뒤에만 이동할 수
+/// 있다. 종료도 action log에 남겨 재생 시 같은 거래 경계를 복원한다.
+final class LeaveShop extends RunAction {
+  const LeaveShop({required this.nodeId});
+
+  final int nodeId;
+}
+
+/// 야장의 두 선택지. 강화는 카드 모델·저장 참조까지 확장하는 후속 단계라 이번
+/// 범위에서는 넣지 않는다. enum은 저장할 때 문자열로 바꾼다.
+enum WildCampChoice { rest, repent }
+
+/// 야장에서 휴식 또는 참회를 고른다.
+final class ChooseWildCampOption extends RunAction {
+  const ChooseWildCampOption({required this.nodeId, required this.choice});
+
+  final int nodeId;
+  final WildCampChoice choice;
+}
+
+/// 노드별로 다시 뽑은 사건의 선택지 하나를 고른다.
+///
+/// 사건 종류·선택지 목록은 저장하지 않고, [nodeId]의 reward 시드에서 복원한다.
+/// 그래서 로그에는 사건 안에서 실제로 고른 [choiceId]만 남는다.
+final class ChooseEventOption extends RunAction {
+  const ChooseEventOption({required this.nodeId, required this.choiceId});
+
+  final int nodeId;
+  final String choiceId;
+}

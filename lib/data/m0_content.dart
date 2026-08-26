@@ -15,6 +15,7 @@ import '../domain/model/card.dart';
 import '../domain/model/enemy.dart';
 import '../domain/model/status.dart';
 import '../domain/run/run_content.dart';
+import 'm1_events.dart';
 
 // ── M0 카드 20장 (§12-1) ─────────────────────────────────────
 
@@ -418,12 +419,13 @@ List<Enemy> defaultEncounter() => [agwi(), wongwi(), dokgwi()];
 ///
 /// `defaultEncounter()`의 세 적은 M0에서 검증한 기본 조합으로 유지하고, 남은
 /// 두 적까지 풀에 넣어 런 노드가 encounter 스트림으로 구성을 뽑는다. 카드 보상이
-/// 생겼으므로 시작 덱 밖의 [cardRewardPool]도 함께 주입한다.
+/// 생겼으므로 시작 덱 밖의 [cardRewardPool]와 M1 사건 8종도 함께 주입한다.
 RunContent m0RunContent() => RunContent(
   maxHp: startingHp,
   deck: starterDeck,
   encounterPool: [...defaultEncounter(), yacha(), nachal()],
   cardRewardPool: cardRewardPool,
+  events: m1Events,
 );
 
 /// 플레이어 시작 체력 (§3.2 — 체력 범위 0~80).

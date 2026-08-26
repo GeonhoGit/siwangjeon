@@ -2,6 +2,7 @@
 library;
 
 import '../combat/combat_engine.dart';
+import '../combat/tuning.dart';
 import '../model/card.dart';
 import '../model/combat_action.dart';
 import '../model/combat_state.dart';
@@ -9,6 +10,7 @@ import '../model/enemy.dart';
 import '../rng/rng.dart';
 import 'run_action.dart';
 import 'run_content.dart';
+import 'run_event.dart';
 import 'run_map.dart';
 import 'run_node_type.dart';
 import 'run_tuning.dart';
@@ -44,12 +46,23 @@ class RunProgress {
     required this.maxHp,
     required this.karma,
     required this.money,
-    required List<CardDef> deck,
+    List<CardDef>? deck,
+    List<RunDeckCard>? deckCards,
     this.combat,
     this.pendingCardReward,
+    this.pendingShop,
+    this.pendingWildCamp,
+    this.pendingEvent,
     this.outcome,
-  }) : visitedNodeIds = List.unmodifiable(visitedNodeIds),
-       deck = List.unmodifiable(deck);
+  }) : assert(deck != null || deckCards != null),
+       visitedNodeIds = List.unmodifiable(visitedNodeIds),
+       deckCards = List.unmodifiable(
+         deckCards ?? _legacyDeckCards(deck ?? const <CardDef>[]),
+       ),
+       deck = List.unmodifiable(
+         deck ??
+             (deckCards ?? const <RunDeckCard>[]).map((entry) => entry.card),
+       );
 
   final RunMap map;
   final List<int> visitedNodeIds;
@@ -63,9 +76,14 @@ class RunProgress {
   /// 전투 승리 때 즉시 얻고, 이후 상점에서 쓸 런 지속 화폐.
   final int money;
 
-  /// 보상이 생기기 전에는 시작 덱이며, 이후 단계에서는 보상 액션을 재생한
-  /// 결과가 이 자리에 들어온다.
+  /// 전투 엔진에 넘길 카드 정의. 카드 제거의 안정적인 대상은 [deckCards]가
+  /// 들고 있으므로 기존 호출자는 이 목록만 계속 읽으면 된다. [deck]만 넘기는
+  /// 기존 프레젠테이션 테스트에는 임시 인스턴스 id를 만들어 호환한다.
   final List<CardDef> deck;
+
+  /// 재생 가능한 카드 인스턴스 목록. 같은 카드 id가 여러 장 있어도 각각의
+  /// [RunDeckCard.instanceId]가 시작 슬롯·보상 노드·상점 상품에 고정된다.
+  final List<RunDeckCard> deckCards;
 
   /// 현재 전투 중이거나 패배로 끝난 전투 상태. 승리한 전투는 결과를 런 값으로
   /// 반영한 뒤 비워 다음 이동이 가능하게 한다.
@@ -73,6 +91,12 @@ class RunProgress {
 
   /// 승리한 전투에서 다시 파생한 3택 1 후보. 저장하지 않고 액션 로그에서 복원한다.
   final CardReward? pendingCardReward;
+
+  /// 비전투 노드는 선택이 끝날 때까지 이동을 잠근다. 후보·사건 자체는 모두
+  /// 노드별 시드에서 다시 만들며 저장 대상이 아니다.
+  final ShopInventory? pendingShop;
+  final WildCampVisit? pendingWildCamp;
+  final PendingRunEvent? pendingEvent;
 
   final RunOutcome? outcome;
 
@@ -96,6 +120,40 @@ class CardReward {
 
   final int nodeId;
   final List<CardDef> cards;
+}
+
+/// 덱 안의 물리적 카드 한 장. id 중복이 가능한 [card]와 달리 [instanceId]는
+/// 런 액션 로그를 재생했을 때 같은 한 장을 가리킨다.
+class RunDeckCard {
+  const RunDeckCard({required this.instanceId, required this.card});
+
+  final String instanceId;
+  final CardDef card;
+}
+
+/// 아직 떠나지 않은 상점의 남은 상품. 가격은 [RunTuning]에 있고, 목록은
+/// 노드별 reward 시드에서 다시 뽑는다.
+class ShopInventory {
+  ShopInventory({required this.nodeId, required List<CardDef> cards})
+    : cards = List.unmodifiable(cards);
+
+  final int nodeId;
+  final List<CardDef> cards;
+}
+
+/// 야장 선택 대기 상태. 강화는 후속 카드 모델 단계에서 붙일 자리다.
+class WildCampVisit {
+  const WildCampVisit({required this.nodeId});
+
+  final int nodeId;
+}
+
+/// 노드별 reward 시드에서 골라진 사건과 아직 선택하지 않은 문맥.
+class PendingRunEvent {
+  const PendingRunEvent({required this.nodeId, required this.event});
+
+  final int nodeId;
+  final RunEventDef event;
 }
 
 /// 새 런의 저장 가능한 뼈대를 만든다.
@@ -122,6 +180,48 @@ List<RunAction> legalRunActions(
     return [
       for (final card in pendingCardReward.cards)
         ChooseCardReward(nodeId: pendingCardReward.nodeId, cardId: card.id),
+    ];
+  }
+
+  final shop = progress.pendingShop;
+  if (shop != null) {
+    final canBuy = progress.money >= tuning.shopCardPrice;
+    final canRemove =
+        progress.money >= tuning.shopRemoveCardPrice &&
+        progress.deckCards.length > 1;
+    return [
+      if (canBuy)
+        for (final card in shop.cards)
+          BuyShopCard(nodeId: shop.nodeId, cardId: card.id),
+      if (canRemove)
+        for (final card in progress.deckCards)
+          RemoveShopCard(nodeId: shop.nodeId, cardInstanceId: card.instanceId),
+      LeaveShop(nodeId: shop.nodeId),
+    ];
+  }
+
+  final wildCamp = progress.pendingWildCamp;
+  if (wildCamp != null) {
+    return [
+      ChooseWildCampOption(
+        nodeId: wildCamp.nodeId,
+        choice: WildCampChoice.rest,
+      ),
+      if (progress.karma >= tuning.wildCampRepentKarmaCleanse &&
+          progress.money >= tuning.wildCampRepentMoneyCost)
+        ChooseWildCampOption(
+          nodeId: wildCamp.nodeId,
+          choice: WildCampChoice.repent,
+        ),
+    ];
+  }
+
+  final pendingEvent = progress.pendingEvent;
+  if (pendingEvent != null) {
+    return [
+      for (final choice in pendingEvent.event.choices)
+        if (_canApplyEventDelta(progress, tuning.eventDeltaFor(choice.effect)))
+          ChooseEventOption(nodeId: pendingEvent.nodeId, choiceId: choice.id),
     ];
   }
 
@@ -184,13 +284,16 @@ RunProgress replayRun(
 }) {
   final map = generateActOneMap(state.seed, tuning: tuning);
   final visitedNodeIds = <int>[];
-  final deck = List<CardDef>.of(content?.deck ?? const <CardDef>[]);
+  final deckCards = _initialDeckCards(content?.deck ?? const <CardDef>[]);
   var hp = content?.maxHp ?? 0;
   final maxHp = content?.maxHp ?? 0;
   var karma = content?.startingKarma ?? 0;
   var money = content?.startingMoney ?? 0;
   CombatState? combat;
   CardReward? pendingCardReward;
+  ShopInventory? pendingShop;
+  WildCampVisit? pendingWildCamp;
+  PendingRunEvent? pendingEvent;
   RunOutcome? outcome;
   final combatLogNodeIds = <int>{};
 
@@ -206,6 +309,15 @@ RunProgress replayRun(
         if (pendingCardReward != null) {
           throw IllegalRunActionError('카드 보상을 고르기 전에는 다음 노드로 이동할 수 없다');
         }
+        if (pendingShop != null) {
+          throw IllegalRunActionError('상점 선택을 끝내기 전에는 다음 노드로 이동할 수 없다');
+        }
+        if (pendingWildCamp != null) {
+          throw IllegalRunActionError('야장 선택을 끝내기 전에는 다음 노드로 이동할 수 없다');
+        }
+        if (pendingEvent != null) {
+          throw IllegalRunActionError('사건 선택을 끝내기 전에는 다음 노드로 이동할 수 없다');
+        }
 
         final progress = RunProgress(
           map: map,
@@ -214,7 +326,7 @@ RunProgress replayRun(
           maxHp: maxHp,
           karma: karma,
           money: money,
-          deck: deck,
+          deckCards: deckCards,
         );
         if (!_legalNextNodeIds(progress).contains(nodeId)) {
           throw IllegalRunActionError('로그가 현재 위치에서 갈 수 없는 노드 $nodeId를 가리킨다');
@@ -222,17 +334,38 @@ RunProgress replayRun(
 
         visitedNodeIds.add(nodeId);
         final node = map.nodeById(nodeId);
-        if (node.hostsCombat && content != null) {
-          combat = _beginNodeCombat(
-            runSeed: state.seed,
-            node: node,
-            hp: hp,
-            maxHp: maxHp,
-            karma: karma,
-            deck: deck,
-            content: content,
-            tuning: tuning,
-          );
+        if (content != null) {
+          switch (node.type) {
+            case RunNodeType.combat || RunNodeType.elite || RunNodeType.boss:
+              combat = _beginNodeCombat(
+                runSeed: state.seed,
+                node: node,
+                hp: hp,
+                maxHp: maxHp,
+                karma: karma,
+                deck: deckCards.map((entry) => entry.card).toList(),
+                content: content,
+                tuning: tuning,
+              );
+            case RunNodeType.shop:
+              pendingShop = shopInventoryForNode(
+                runSeed: state.seed,
+                node: node,
+                content: content,
+                tuning: tuning,
+              );
+            case RunNodeType.wildCamp:
+              pendingWildCamp = WildCampVisit(nodeId: node.id);
+            case RunNodeType.event:
+              pendingEvent = PendingRunEvent(
+                nodeId: node.id,
+                event: eventForNode(
+                  runSeed: state.seed,
+                  node: node,
+                  content: content,
+                ),
+              );
+          }
         }
 
       case CombatNodeLog(:final nodeId, :final actions):
@@ -304,8 +437,138 @@ RunProgress replayRun(
         if (selectedCard == null) {
           throw IllegalRunActionError('카드 보상 후보에 없는 카드를 골랐다');
         }
-        deck.add(selectedCard);
+        deckCards.add(
+          RunDeckCard(
+            instanceId: _rewardCardInstanceId(nodeId, selectedCard.id),
+            card: selectedCard,
+          ),
+        );
         pendingCardReward = null;
+
+      case BuyShopCard(:final nodeId, :final cardId):
+        if (outcome != null) {
+          throw IllegalRunActionError('끝난 런에는 상점 거래를 기록할 수 없다');
+        }
+        final shop = pendingShop;
+        if (shop == null || shop.nodeId != nodeId) {
+          throw IllegalRunActionError('현재 상점과 맞지 않는 구매다');
+        }
+        if (money < tuning.shopCardPrice) {
+          throw IllegalRunActionError('상점 카드 가격을 낼 노잣돈이 없다');
+        }
+        CardDef? selectedCard;
+        for (final card in shop.cards) {
+          if (card.id == cardId) {
+            selectedCard = card;
+            break;
+          }
+        }
+        if (selectedCard == null) {
+          throw IllegalRunActionError('상점 상품에 없는 카드를 샀다');
+        }
+        money -= tuning.shopCardPrice;
+        deckCards.add(
+          RunDeckCard(
+            instanceId: _shopCardInstanceId(nodeId, selectedCard.id),
+            card: selectedCard,
+          ),
+        );
+        pendingShop = ShopInventory(
+          nodeId: nodeId,
+          cards: shop.cards.where((card) => card.id != cardId).toList(),
+        );
+
+      case RemoveShopCard(:final nodeId, :final cardInstanceId):
+        if (outcome != null) {
+          throw IllegalRunActionError('끝난 런에는 상점 거래를 기록할 수 없다');
+        }
+        final shop = pendingShop;
+        if (shop == null || shop.nodeId != nodeId) {
+          throw IllegalRunActionError('현재 상점과 맞지 않는 카드 제거다');
+        }
+        if (money < tuning.shopRemoveCardPrice) {
+          throw IllegalRunActionError('카드 제거 가격을 낼 노잣돈이 없다');
+        }
+        if (deckCards.length <= 1) {
+          throw IllegalRunActionError('마지막 카드 한 장은 제거할 수 없다');
+        }
+        final index = deckCards.indexWhere(
+          (card) => card.instanceId == cardInstanceId,
+        );
+        if (index < 0) {
+          throw IllegalRunActionError('덱에 없는 카드 인스턴스를 제거할 수 없다');
+        }
+        money -= tuning.shopRemoveCardPrice;
+        deckCards.removeAt(index);
+
+      case LeaveShop(:final nodeId):
+        if (outcome != null) {
+          throw IllegalRunActionError('끝난 런에는 상점을 나갈 수 없다');
+        }
+        final shop = pendingShop;
+        if (shop == null || shop.nodeId != nodeId) {
+          throw IllegalRunActionError('현재 상점과 맞지 않는 종료다');
+        }
+        pendingShop = null;
+
+      case ChooseWildCampOption(:final nodeId, :final choice):
+        if (outcome != null) {
+          throw IllegalRunActionError('끝난 런에는 야장 선택을 기록할 수 없다');
+        }
+        final wildCamp = pendingWildCamp;
+        if (wildCamp == null || wildCamp.nodeId != nodeId) {
+          throw IllegalRunActionError('현재 야장과 맞지 않는 선택이다');
+        }
+        switch (choice) {
+          case WildCampChoice.rest:
+            hp = _heal(hp, tuning.wildCampRestHeal, maxHp);
+          case WildCampChoice.repent:
+            if (karma < tuning.wildCampRepentKarmaCleanse ||
+                money < tuning.wildCampRepentMoneyCost) {
+              throw IllegalRunActionError('참회의 업 또는 노잣돈 대가를 낼 수 없다');
+            }
+            karma -= tuning.wildCampRepentKarmaCleanse;
+            money -= tuning.wildCampRepentMoneyCost;
+        }
+        pendingWildCamp = null;
+
+      case ChooseEventOption(:final nodeId, :final choiceId):
+        if (outcome != null) {
+          throw IllegalRunActionError('끝난 런에는 사건 선택을 기록할 수 없다');
+        }
+        final event = pendingEvent;
+        if (event == null || event.nodeId != nodeId) {
+          throw IllegalRunActionError('현재 사건과 맞지 않는 선택이다');
+        }
+        RunEventChoice? selectedChoice;
+        for (final choice in event.event.choices) {
+          if (choice.id == choiceId) {
+            selectedChoice = choice;
+            break;
+          }
+        }
+        if (selectedChoice == null) {
+          throw IllegalRunActionError('사건 선택지에 없는 값을 골랐다');
+        }
+        final delta = tuning.eventDeltaFor(selectedChoice.effect);
+        final progress = RunProgress(
+          map: map,
+          visitedNodeIds: visitedNodeIds,
+          hp: hp,
+          maxHp: maxHp,
+          karma: karma,
+          money: money,
+          deckCards: deckCards,
+        );
+        if (!_canApplyEventDelta(progress, delta)) {
+          throw IllegalRunActionError('사건 선택의 대가를 낼 수 없다');
+        }
+        hp = _heal(hp, delta.hp, maxHp);
+        // 업 상한은 전투와 런 사이에 달라지면 안 된다. 사건도 전투 카드 효과와
+        // 같은 상한을 적용해, 다음 전투에 들어갈 때만 값이 조용히 바뀌지 않게 한다.
+        karma = (karma + delta.karma).clamp(0, CombatTuning.m0.maxKarma);
+        money += delta.money;
+        pendingEvent = null;
     }
   }
 
@@ -316,9 +579,12 @@ RunProgress replayRun(
     maxHp: maxHp,
     karma: karma,
     money: money,
-    deck: deck,
+    deckCards: deckCards,
     combat: combat,
     pendingCardReward: pendingCardReward,
+    pendingShop: pendingShop,
+    pendingWildCamp: pendingWildCamp,
+    pendingEvent: pendingEvent,
     outcome: outcome,
   );
 }
@@ -342,6 +608,15 @@ int encounterSeedForNode(int runSeed, int nodeId) =>
 /// combat·encounter 소금과 다른 값을 써서 스트림과 파생 시드가 겹치지 않게 한다.
 int rewardSeedForNode(int runSeed, int nodeId) =>
     _nodeSeed(runSeed, nodeId, 0x27D4EB2F);
+
+/// 상점 상품은 카드 보상과 같은 reward 스트림을 쓰되, 보상·전투·조우의 소금과
+/// 겹치지 않는 노드별 시드를 쓴다. 앞 상점의 거래가 다음 상품을 밀지 않는다.
+int shopSeedForNode(int runSeed, int nodeId) =>
+    _nodeSeed(runSeed, nodeId, 0x165667B1);
+
+/// 사건도 선택지를 저장하지 않고 노드별 reward 시드에서 다시 고른다.
+int eventSeedForNode(int runSeed, int nodeId) =>
+    _nodeSeed(runSeed, nodeId, 0xD3A2646C);
 
 /// [RngStream.encounter]에서 현재 노드의 적을 결정론적으로 구성한다.
 ///
@@ -417,6 +692,54 @@ CardReward cardRewardForNode({
   }
 
   return CardReward(nodeId: node.id, cards: cards);
+}
+
+/// 현재 상점의 서로 다른 상품 후보를 `RngStream.reward`에서 뽑는다.
+ShopInventory shopInventoryForNode({
+  required int runSeed,
+  required RunNode node,
+  required RunContent content,
+  RunTuning tuning = RunTuning.m1,
+}) {
+  if (node.type != RunNodeType.shop) {
+    throw ArgumentError.value(node, 'node', '상점이 아닌 노드에는 상품이 없다');
+  }
+  if (tuning.shopCardChoiceCount > content.shopCardPool.length) {
+    throw ArgumentError.value(
+      tuning.shopCardChoiceCount,
+      'tuning shopCardChoiceCount',
+      '상점 카드 풀보다 많은 서로 다른 상품을 제시할 수 없다',
+    );
+  }
+
+  var rng = Rng.forStream(shopSeedForNode(runSeed, node.id), RngStream.reward);
+  final available = List<CardDef>.of(content.shopCardPool);
+  final cards = <CardDef>[];
+  for (var i = 0; i < tuning.shopCardChoiceCount; i++) {
+    final (index, next) = rng.nextInt(available.length);
+    rng = next;
+    cards.add(available.removeAt(index));
+  }
+  return ShopInventory(nodeId: node.id, cards: cards);
+}
+
+/// 현재 사건을 `RngStream.reward`에서 노드별로 독립적으로 고른다.
+RunEventDef eventForNode({
+  required int runSeed,
+  required RunNode node,
+  required RunContent content,
+}) {
+  if (node.type != RunNodeType.event) {
+    throw ArgumentError.value(node, 'node', '사건이 아닌 노드에는 사건이 없다');
+  }
+  if (content.events.isEmpty) {
+    throw ArgumentError.value(content.events, 'events', '사건 노드에는 사건 콘텐츠가 필요하다');
+  }
+  final (index, _) = Rng.forStream(
+    eventSeedForNode(runSeed, node.id),
+    RngStream.reward,
+  ).nextInt(content.events.length);
+  return content.events[index];
 }
 
 /// 전투 승리 때 즉시 얻는 노잣돈. 정예는 유물 보상 전까지 더 많은 화폐를 준다.
@@ -498,6 +821,34 @@ bool _sameRunAction(RunAction left, RunAction right) => switch ((left, right)) {
     ChooseCardReward(nodeId: final rightNodeId, cardId: final rightCardId),
   ) =>
     leftNodeId == rightNodeId && leftCardId == rightCardId,
+  (
+    BuyShopCard(nodeId: final leftNodeId, cardId: final leftCardId),
+    BuyShopCard(nodeId: final rightNodeId, cardId: final rightCardId),
+  ) =>
+    leftNodeId == rightNodeId && leftCardId == rightCardId,
+  (
+    RemoveShopCard(
+      nodeId: final leftNodeId,
+      cardInstanceId: final leftCardInstanceId,
+    ),
+    RemoveShopCard(
+      nodeId: final rightNodeId,
+      cardInstanceId: final rightCardInstanceId,
+    ),
+  ) =>
+    leftNodeId == rightNodeId && leftCardInstanceId == rightCardInstanceId,
+  (LeaveShop(nodeId: final leftNodeId), LeaveShop(nodeId: final rightNodeId)) =>
+    leftNodeId == rightNodeId,
+  (
+    ChooseWildCampOption(nodeId: final leftNodeId, choice: final leftChoice),
+    ChooseWildCampOption(nodeId: final rightNodeId, choice: final rightChoice),
+  ) =>
+    leftNodeId == rightNodeId && leftChoice == rightChoice,
+  (
+    ChooseEventOption(nodeId: final leftNodeId, choiceId: final leftChoiceId),
+    ChooseEventOption(nodeId: final rightNodeId, choiceId: final rightChoiceId),
+  ) =>
+    leftNodeId == rightNodeId && leftChoiceId == rightChoiceId,
   _ => false,
 };
 
@@ -534,4 +885,42 @@ int _nodeSeed(int runSeed, int nodeId, int salt) {
   mixed ^= mixed >> 13;
   mixed = (mixed * 0xC2B2AE35) & mask;
   return (mixed ^ (mixed >> 16)) & mask;
+}
+
+List<RunDeckCard> _initialDeckCards(List<CardDef> cards) => [
+  for (var index = 0; index < cards.length; index++)
+    RunDeckCard(
+      // 고정 콘텐츠의 시작 덱 슬롯은 앞선 런 액션과 무관하다. 같은 카드 id가
+      // 두 번 있어도 각각의 슬롯이 남으므로 카드 제거 로그가 다른 사본을 지우지
+      // 않는다.
+      instanceId: 'start:$index:${cards[index].id}',
+      card: cards[index],
+    ),
+];
+
+List<RunDeckCard> _legacyDeckCards(List<CardDef> cards) => [
+  for (var index = 0; index < cards.length; index++)
+    RunDeckCard(
+      instanceId: 'legacy:$index:${cards[index].id}',
+      card: cards[index],
+    ),
+];
+
+String _rewardCardInstanceId(int nodeId, String cardId) =>
+    'reward:$nodeId:$cardId';
+
+String _shopCardInstanceId(int nodeId, String cardId) => 'shop:$nodeId:$cardId';
+
+bool _canApplyEventDelta(RunProgress progress, RunEventDelta delta) {
+  // 체력 비용으로 사건에서 죽는 선택지는 내지 않는다. 회복은 최대 체력에서
+  // 멈추고, 정화량보다 업이 적거나 노잣돈이 모자란 경우도 비용을 낼 수 없다.
+  return progress.hp + delta.hp > 0 &&
+      progress.karma + delta.karma >= 0 &&
+      progress.money + delta.money >= 0;
+}
+
+int _heal(int hp, int amount, int maxHp) {
+  final next = hp + amount;
+  if (next < 1) return 1;
+  return next > maxHp ? maxHp : next;
 }
