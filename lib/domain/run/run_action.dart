@@ -40,3 +40,18 @@ final class CombatNodeLog extends RunAction {
   /// 해당 노드에서 턴 단위로 저장할 전투 입력.
   final List<CombatAction> actions;
 }
+
+/// 전투 보상에서 카드 하나를 덱에 넣는다.
+///
+/// 후보 배열의 위치 대신 [cardId]를 기록한다. 카드 보상 풀의 순서나 구성은
+/// 콘텐츠 갱신에서 바뀔 수 있지만, §7.3의 콘텐츠 id는 같은 카드의 식별자로
+/// 유지되므로 과거 액션 로그가 다른 카드를 가리키지 않는다.
+final class ChooseCardReward extends RunAction {
+  const ChooseCardReward({required this.nodeId, required this.cardId});
+
+  /// 보상을 낸 전투 노드. 현재 대기 중인 보상과 로그를 대조한다.
+  final int nodeId;
+
+  /// 선택한 카드 정의의 안정적인 콘텐츠 id.
+  final String cardId;
+}
