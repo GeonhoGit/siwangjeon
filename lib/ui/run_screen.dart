@@ -12,8 +12,10 @@ import '../app/run_controller.dart';
 import '../domain/combat/combat_engine.dart';
 import '../domain/model/card.dart';
 import '../domain/run/run_action.dart';
+import '../domain/run/run_engine.dart';
 import '../domain/run/run_map.dart';
 import '../domain/run/run_node_type.dart';
+import '../domain/run/run_tuning.dart';
 import 'combat_screen.dart';
 import 'labels.dart';
 
@@ -39,12 +41,17 @@ class RunScreen extends ConsumerWidget {
     if (progress.pendingCardReward != null) {
       return _RewardScreen(session: session, onChoose: controller.dispatch);
     }
+    if (progress.pendingShop != null) {
+      return _ShopScreen(session: session, onChoose: controller.dispatch);
+    }
+    if (progress.pendingWildCamp != null) {
+      return _WildCampScreen(session: session, onChoose: controller.dispatch);
+    }
+    if (progress.pendingEvent != null) {
+      return _EventScreen(session: session, onChoose: controller.dispatch);
+    }
     if (progress.isInCombat) return const _RunCombatHost();
 
-    // 상점·야장·사건은 M1에서 아직 내용 화면이 없다. domain은 이 비전투 노드의
-    // MoveToNode를 기록한 뒤 다음 합법 이동을 돌려주므로, 지금은 이 지도에
-    // 그대로 남아 아무 효과 없이 지나간다. 각 노드의 내용은 후속 M1 화면이
-    // 이 분기 자리에 붙을 예정이다.
     return RunMapScreen(session: session, onMove: controller.dispatch);
   }
 }
@@ -500,6 +507,358 @@ class _RewardCardButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ShopScreen extends StatelessWidget {
+  const _ShopScreen({required this.session, required this.onChoose});
+
+  final RunSession session;
+  final ValueChanged<RunAction> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = session.progress;
+    final shop = progress.pendingShop!;
+    final purchasesByCardId = {
+      for (final action in session.legalActions.whereType<BuyShopCard>())
+        action.cardId: action,
+    };
+    final removalsByCardInstanceId = {
+      for (final action in session.legalActions.whereType<RemoveShopCard>())
+        action.cardInstanceId: action,
+    };
+    final leave = session.legalActions.whereType<LeaveShop>().single;
+
+    return _NodeChoiceScaffold(
+      screenKey: const ValueKey('shop-screen'),
+      title: '저승 상점',
+      status: '노잣돈 ${progress.money}',
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          const Text('상품을 고르세요'),
+          const SizedBox(height: 8),
+          for (final card in shop.cards) ...[
+            _ShopCardButton(
+              card: card,
+              price: RunTuning.m1.shopCardPrice,
+              onPurchase: purchasesByCardId[card.id] == null
+                  ? null
+                  : () => onChoose(purchasesByCardId[card.id]!),
+            ),
+            const SizedBox(height: 12),
+          ],
+          const SizedBox(height: 8),
+          const Text(
+            '카드 제거',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text('비용 ${RunTuning.m1.shopRemoveCardPrice} 노잣돈'),
+          const SizedBox(height: 8),
+          for (var index = 0; index < progress.deckCards.length; index++) ...[
+            _ShopRemoveCardButton(
+              deckCard: progress.deckCards[index],
+              deckPosition: index + 1,
+              onRemove:
+                  removalsByCardInstanceId[progress
+                          .deckCards[index]
+                          .instanceId] ==
+                      null
+                  ? null
+                  : () => onChoose(
+                      removalsByCardInstanceId[progress
+                          .deckCards[index]
+                          .instanceId]!,
+                    ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          FilledButton(
+            key: const ValueKey('shop-leave'),
+            onPressed: () => onChoose(leave),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+            ),
+            child: const Text('상점 나가기'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShopCardButton extends StatelessWidget {
+  const _ShopCardButton({
+    required this.card,
+    required this.price,
+    required this.onPurchase,
+  });
+
+  final CardDef card;
+  final int price;
+  final VoidCallback? onPurchase;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectLines = _cardEffectLines(card);
+    return FilledButton(
+      key: ValueKey('shop-card-${card.id}'),
+      onPressed: onPurchase,
+      style: FilledButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        minimumSize: const Size.fromHeight(72),
+        padding: const EdgeInsets.all(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(card.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text('${_cardTypeName(card.type)} · 비용 ${card.cost}'),
+          const SizedBox(height: 8),
+          for (var index = 0; index < effectLines.length; index++)
+            Text(
+              key: ValueKey('shop-card-effect-${card.id}-$index'),
+              effectLines[index],
+            ),
+          const SizedBox(height: 8),
+          Text('구매 $price 노잣돈'),
+          if (onPurchase == null) const Text('구매할 수 없음'),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShopRemoveCardButton extends StatelessWidget {
+  const _ShopRemoveCardButton({
+    required this.deckCard,
+    required this.deckPosition,
+    required this.onRemove,
+  });
+
+  final RunDeckCard deckCard;
+  final int deckPosition;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      key: ValueKey('shop-remove-${deckCard.instanceId}'),
+      onPressed: onRemove,
+      style: OutlinedButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        minimumSize: const Size.fromHeight(56),
+        padding: const EdgeInsets.all(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${deckCard.card.name} · 덱 $deckPosition번',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Text(
+            '${_cardTypeName(deckCard.card.type)} · 비용 ${deckCard.card.cost}',
+          ),
+          if (onRemove == null) const Text('제거할 수 없음'),
+        ],
+      ),
+    );
+  }
+}
+
+class _WildCampScreen extends StatelessWidget {
+  const _WildCampScreen({required this.session, required this.onChoose});
+
+  final RunSession session;
+  final ValueChanged<RunAction> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = session.progress;
+    final optionsByChoice = {
+      for (final action
+          in session.legalActions.whereType<ChooseWildCampOption>())
+        action.choice: action,
+    };
+
+    return _NodeChoiceScaffold(
+      screenKey: const ValueKey('wild-camp-screen'),
+      title: '야장',
+      status:
+          '체력 ${progress.hp}/${progress.maxHp} · 업 ${progress.karma} · 노잣돈 ${progress.money}',
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          const Text('오늘의 대가를 고르세요'),
+          const SizedBox(height: 12),
+          _WildCampOptionButton(
+            choice: WildCampChoice.rest,
+            title: '휴식',
+            detail: '체력 +${RunTuning.m1.wildCampRestHeal}',
+            action: optionsByChoice[WildCampChoice.rest],
+            onChoose: onChoose,
+          ),
+          const SizedBox(height: 12),
+          _WildCampOptionButton(
+            choice: WildCampChoice.repent,
+            title: '참회',
+            detail:
+                '업 -${RunTuning.m1.wildCampRepentKarmaCleanse} · 노잣돈 -${RunTuning.m1.wildCampRepentMoneyCost}',
+            action: optionsByChoice[WildCampChoice.repent],
+            onChoose: onChoose,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WildCampOptionButton extends StatelessWidget {
+  const _WildCampOptionButton({
+    required this.choice,
+    required this.title,
+    required this.detail,
+    required this.action,
+    required this.onChoose,
+  });
+
+  final WildCampChoice choice;
+  final String title;
+  final String detail;
+  final ChooseWildCampOption? action;
+  final ValueChanged<RunAction> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      key: ValueKey('wild-camp-${choice.name}'),
+      onPressed: action == null ? null : () => onChoose(action!),
+      style: FilledButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        minimumSize: const Size.fromHeight(64),
+        padding: const EdgeInsets.all(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(detail),
+          if (action == null) const Text('선택할 수 없음'),
+        ],
+      ),
+    );
+  }
+}
+
+class _EventScreen extends StatelessWidget {
+  const _EventScreen({required this.session, required this.onChoose});
+
+  final RunSession session;
+  final ValueChanged<RunAction> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final pendingEvent = session.progress.pendingEvent!;
+    final optionsById = {
+      for (final action in session.legalActions.whereType<ChooseEventOption>())
+        action.choiceId: action,
+    };
+
+    return _NodeChoiceScaffold(
+      screenKey: const ValueKey('event-screen'),
+      title: pendingEvent.event.name,
+      status: '사건 선택',
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          const Text('선택지가 기록을 바꿉니다'),
+          const SizedBox(height: 12),
+          // 사건의 보이지 않는 선택지는 현재 업 구간에서 애초에 성립하지 않는
+          // 서사다. 상점처럼 공개된 상품을 흐리게 보이는 것과 달리, 이를
+          // 노출하면 도메인이 감춘 업 구간 정보를 UI가 새로 알려 주게 된다.
+          for (final choice in pendingEvent.event.choices)
+            if (optionsById[choice.id] case final action?) ...[
+              FilledButton(
+                key: ValueKey('event-choice-${choice.id}'),
+                onPressed: () => onChoose(action),
+                style: FilledButton.styleFrom(
+                  alignment: Alignment.centerLeft,
+                  minimumSize: const Size.fromHeight(64),
+                  padding: const EdgeInsets.all(16),
+                ),
+                child: Text(choice.label),
+              ),
+              const SizedBox(height: 12),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+class _NodeChoiceScaffold extends StatelessWidget {
+  const _NodeChoiceScaffold({
+    required this.screenKey,
+    required this.title,
+    required this.status,
+    required this.child,
+  });
+
+  final Key screenKey;
+  final String title;
+  final String status;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: screenKey,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(status),
+            ),
+            const SizedBox(height: 20),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+List<String> _cardEffectLines(CardDef card) {
+  // 상점은 보상과 마찬가지로 진행 중인 전투 상태가 없다. 그래서 엔진이 정한
+  // 상태·업 보정 전 기본 수치만 쓰고, UI에서 피해·방어 규칙을 다시 계산하지 않는다.
+  final effects = cardEffectLabels(
+    card,
+    damage: previewBaseDamage(card),
+    block: previewBaseBlock(card),
+  );
+  return [
+    effects.take(2).join(' · '),
+    if (effects.length > 2) effects.skip(2).join(' · '),
+  ].where((line) => line.isNotEmpty).toList();
 }
 
 class _RunEndedScreen extends StatelessWidget {
