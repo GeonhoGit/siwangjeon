@@ -15,6 +15,7 @@ import 'package:siwangjeon/domain/run/run_tuning.dart';
 
 const _combatOnlyTuning = RunTuning(
   nodeTypeWeights: [RunNodeWeight(RunNodeType.combat, 1)],
+  cardRewardChoiceCount: 1,
 );
 
 const _decisiveStrike = CardDef(
@@ -63,14 +64,24 @@ void main() {
       expect(afterWin.isInCombat, isFalse);
       expect(afterWin.hp, 80);
       expect(afterWin.karma, 15);
+      expect(afterWin.money, _combatOnlyTuning.baseMoneyReward);
       expect(
         afterWin.deck.map((card) => card.id),
         everyElement(_decisiveStrike.id),
       );
 
+      final rewarded = _chooseReward(won, content: content);
+      final afterReward = replayRun(
+        rewarded,
+        tuning: _combatOnlyTuning,
+        content: content,
+      );
+      expect(afterReward.pendingCardReward, isNull);
+      expect(afterReward.deck, hasLength(9));
+
       final next = applyRunAction(
-        won,
-        _nextMove(won, content: content),
+        rewarded,
+        _nextMove(rewarded, content: content),
         tuning: _combatOnlyTuning,
         content: content,
       );
@@ -144,6 +155,7 @@ void main() {
       expect(left.hp, right.hp);
       expect(left.maxHp, right.maxHp);
       expect(left.karma, right.karma);
+      expect(left.money, right.money);
       expect(
         left.deck.map((card) => card.id).toList(),
         right.deck.map((card) => card.id).toList(),
@@ -206,15 +218,17 @@ void main() {
         firstTargetIndex: 1,
       );
 
+      final rewardedFirst = _chooseReward(first, content: content);
+      final rewardedSecond = _chooseReward(second, content: content);
       final nextFirst = applyRunAction(
-        first,
-        _nextMove(first, content: content),
+        rewardedFirst,
+        _nextMove(rewardedFirst, content: content),
         tuning: _combatOnlyTuning,
         content: content,
       );
       final nextSecond = applyRunAction(
-        second,
-        _nextMove(second, content: content),
+        rewardedSecond,
+        _nextMove(rewardedSecond, content: content),
         tuning: _combatOnlyTuning,
         content: content,
       );
@@ -327,18 +341,21 @@ RunContent _victoryContent() => RunContent(
   maxHp: 80,
   deck: List<CardDef>.filled(8, _decisiveStrike),
   encounterPool: _enemies(hp: 1),
+  cardRewardPool: [_decisiveStrike],
 );
 
 RunContent _defeatContent() => RunContent(
   maxHp: 10,
   deck: List<CardDef>.filled(8, _wait),
   encounterPool: _enemies(hp: 99, damage: 10),
+  cardRewardPool: [_wait],
 );
 
 RunContent _waitingContent() => RunContent(
   maxHp: 80,
   deck: List<CardDef>.filled(8, _wait),
   encounterPool: _enemies(hp: 99),
+  cardRewardPool: [_wait],
 );
 
 List<Enemy> _enemies({required int hp, int damage = 0}) => [
@@ -401,6 +418,18 @@ MoveToNode _nextMove(RunState state, {required RunContent content}) =>
       tuning: _combatOnlyTuning,
       content: content,
     ).whereType<MoveToNode>().first;
+
+RunState _chooseReward(RunState state, {required RunContent content}) =>
+    applyRunAction(
+      state,
+      legalRunActions(
+        state,
+        tuning: _combatOnlyTuning,
+        content: content,
+      ).whereType<ChooseCardReward>().first,
+      tuning: _combatOnlyTuning,
+      content: content,
+    );
 
 CombatNodeLog _combatLog(
   RunState state, {
