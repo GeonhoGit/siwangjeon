@@ -40,6 +40,7 @@ const _galaxyS25Ultra = _TestDevice(
 );
 
 const _boundaryDevices = [_pixel8, _galaxyS25Ultra];
+const _mapSeeds = [0, 1, 7, 53, 20260826, 20260827, 987654321];
 
 const _finisher = CardDef(
   id: 'ui_finisher',
@@ -137,6 +138,37 @@ void main() {
         expect(find.text(symbol), findsWidgets);
       }
       expect(tester.takeException(), isNull);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('지도 슬롯 열과 직선 간선은 화면 좌표에서도 교차하지 않는다', (tester) async {
+    tester.view.physicalSize = _pixel8.physicalSize;
+    tester.view.devicePixelRatio = _pixel8.devicePixelRatio;
+    addTearDown(tester.view.reset);
+
+    try {
+      for (final seed in _mapSeeds) {
+        final map = generateActOneMap(seed);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RunMapScreen(session: _mapSession(map), onMove: (_) {}),
+          ),
+        );
+        await tester.pump();
+
+        final centers = <int, Offset>{
+          for (final node in map.nodes)
+            node.id: _layoutBounds(
+              tester,
+              find.byKey(ValueKey('run-node-${node.id}')),
+            ).center,
+        };
+        _expectFixedSlotColumns(map, centers, seed);
+        _expectNonCrossingEdgesInPixels(map, centers, seed);
+        expect(tester.takeException(), isNull);
+      }
     } finally {
       await _disposeTree(tester);
     }
@@ -307,6 +339,94 @@ RunSession _deepMapSession() {
     ),
     legalActions: const [],
   );
+}
+
+RunSession _mapSession(RunMap map) {
+  return RunSession(
+    state: const RunState(seed: 1, characterId: 'm0', actionLog: []),
+    progress: RunProgress(
+      map: map,
+      visitedNodeIds: const [],
+      hp: 80,
+      maxHp: 80,
+      karma: 0,
+      money: 0,
+      deck: const [],
+    ),
+    legalActions: const [],
+  );
+}
+
+void _expectFixedSlotColumns(RunMap map, Map<int, Offset> centers, int seed) {
+  final nodesByDepth = <int, List<RunNode>>{};
+  for (final node in map.nodes) {
+    nodesByDepth.putIfAbsent(node.depth, () => []).add(node);
+  }
+
+  final centerXBySlot = <int, double>{};
+  for (final entry in nodesByDepth.entries) {
+    final nodes = [...entry.value]
+      ..sort((left, right) => left.id.compareTo(right.id));
+    for (var slot = 0; slot < nodes.length; slot++) {
+      final actualCenterX = centers[nodes[slot].id]!.dx;
+      final expectedCenterX = centerXBySlot[slot];
+      if (expectedCenterX == null) {
+        centerXBySlot[slot] = actualCenterX;
+      } else {
+        expect(
+          actualCenterX,
+          closeTo(expectedCenterX, 0.001),
+          reason: 'seed $seed depth ${entry.key} slot $slot',
+        );
+      }
+    }
+  }
+}
+
+void _expectNonCrossingEdgesInPixels(
+  RunMap map,
+  Map<int, Offset> centers,
+  int seed,
+) {
+  final nodesByDepth = <int, List<RunNode>>{};
+  for (final node in map.nodes) {
+    nodesByDepth.putIfAbsent(node.depth, () => []).add(node);
+  }
+
+  final lastDepth = nodesByDepth.keys.reduce(
+    (current, depth) => current > depth ? current : depth,
+  );
+  for (var depth = 0; depth < lastDepth; depth++) {
+    final nodes = [...nodesByDepth[depth]!]
+      ..sort((left, right) => left.id.compareTo(right.id));
+    for (var leftSlot = 0; leftSlot < nodes.length; leftSlot++) {
+      final left = nodes[leftSlot];
+      for (
+        var rightSlot = leftSlot + 1;
+        rightSlot < nodes.length;
+        rightSlot++
+      ) {
+        final right = nodes[rightSlot];
+        expect(
+          centers[left.id]!.dx,
+          lessThan(centers[right.id]!.dx),
+          reason: 'seed $seed depth $depth source slots',
+        );
+        for (final leftTargetId in left.nextNodeIds) {
+          for (final rightTargetId in right.nextNodeIds) {
+            expect(
+              centers[leftTargetId]!.dx,
+              lessThanOrEqualTo(centers[rightTargetId]!.dx),
+              reason:
+                  'seed $seed depth $depth '
+                  '${left.id}->$leftTargetId vs '
+                  '${right.id}->$rightTargetId',
+            );
+          }
+        }
+      }
+    }
+  }
 }
 
 RunContent _victoryContent() => RunContent(

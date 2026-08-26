@@ -48,6 +48,12 @@ void main() {
       }
     });
 
+    test('대표 시드에서 슬롯 순서를 뒤집는 간선이 없다', () {
+      for (final seed in _mapSeeds) {
+        _expectNonCrossingEdges(generateActOneMap(seed), seed);
+      }
+    });
+
     test('대표 시드에서 맵 경로 성질을 보존한다', () {
       const tuning = RunTuning.m1;
 
@@ -258,6 +264,53 @@ List<String> _branchSignature(RunMap map) {
   return [
     for (final node in map.nodes) '${node.depth}:${node.nextNodeIds.join(',')}',
   ];
+}
+
+void _expectNonCrossingEdges(RunMap map, int seed) {
+  final nodesByDepth = <int, List<RunNode>>{};
+  for (final node in map.nodes) {
+    nodesByDepth.putIfAbsent(node.depth, () => []).add(node);
+  }
+
+  final lastDepth = nodesByDepth.keys.reduce(
+    (current, depth) => current > depth ? current : depth,
+  );
+  for (var depth = 0; depth < lastDepth; depth++) {
+    final currentNodes = [...nodesByDepth[depth]!]
+      ..sort((left, right) => left.id.compareTo(right.id));
+    final nextNodes = [...nodesByDepth[depth + 1]!]
+      ..sort((left, right) => left.id.compareTo(right.id));
+    final targetSlotById = {
+      for (var slot = 0; slot < nextNodes.length; slot++)
+        nextNodes[slot].id: slot,
+    };
+
+    for (var leftSlot = 0; leftSlot < currentNodes.length; leftSlot++) {
+      final left = currentNodes[leftSlot];
+      final leftMaxTargetSlot = left.nextNodeIds
+          .map((id) => targetSlotById[id]!)
+          .reduce((current, slot) => current > slot ? current : slot);
+      for (
+        var rightSlot = leftSlot + 1;
+        rightSlot < currentNodes.length;
+        rightSlot++
+      ) {
+        final right = currentNodes[rightSlot];
+        final rightMinTargetSlot = right.nextNodeIds
+            .map((id) => targetSlotById[id]!)
+            .reduce((current, slot) => current < slot ? current : slot);
+
+        expect(
+          leftMaxTargetSlot,
+          lessThanOrEqualTo(rightMinTargetSlot),
+          reason:
+              'seed $seed depth $depth '
+              '${left.id}->${left.nextNodeIds} vs '
+              '${right.id}->${right.nextNodeIds}',
+        );
+      }
+    }
+  }
 }
 
 Set<int> _pathLengthsToBoss(RunMap map, int nodeId) {
