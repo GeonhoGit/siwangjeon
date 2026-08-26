@@ -45,10 +45,10 @@ String _attackIntentLabel({required int? damage, required int times}) {
   return times > 1 ? '공격 $damage ×$times' : '공격 $damage';
 }
 
-/// 겹친 손패의 왼쪽 띠에 남길 카드 식별자.
+/// 겹친 손패의 왼쪽 띠에 남는 카드 이름 앞부분.
 ///
 /// M0의 스무 카드 이름은 첫 두 글자가 모두 달라 비용과 함께 고를 수 있다.
-/// 전체 이름과 효과는 선택 뒤 최상단 카드에서 그대로 읽는다.
+/// 이름 자체는 한 텍스트로 그려 자연스러운 어절을 보존한다.
 String handCardLabel(CardDef card) =>
     card.name.length <= 2 ? card.name : card.name.substring(0, 2);
 

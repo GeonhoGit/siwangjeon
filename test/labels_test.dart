@@ -20,7 +20,7 @@ void main() {
     });
   });
 
-  test('겹친 손패용 앞 두 글자는 M0의 20종을 모두 구분한다', () {
+  test('겹친 손패에 남는 이름 앞 두 글자는 M0의 20종을 모두 구분한다', () {
     final labels = m0Cards.map(handCardLabel).toList();
 
     expect(labels, hasLength(20));

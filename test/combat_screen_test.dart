@@ -17,6 +17,7 @@ import 'package:siwangjeon/domain/combat/combat_engine.dart';
 import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
+import 'package:siwangjeon/ui/labels.dart';
 
 class TestDevice {
   const TestDevice({
@@ -138,6 +139,31 @@ Rect paintBounds(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);
   final box = tester.renderObject<RenderBox>(finder);
   return MatrixUtils.transformRect(box.getTransformTo(null), box.paintBounds);
+}
+
+Rect textPrefixPaintBounds(WidgetTester tester, Finder finder, int endOffset) {
+  expect(finder, findsOneWidget);
+  final paragraph = tester.renderObject<RenderParagraph>(finder);
+  final boxes = paragraph.getBoxesForSelection(
+    TextSelection(baseOffset: 0, extentOffset: endOffset),
+  );
+  expect(boxes, isNotEmpty);
+
+  var prefixBounds = Rect.fromLTRB(
+    boxes.first.left,
+    boxes.first.top,
+    boxes.first.right,
+    boxes.first.bottom,
+  );
+  for (final box in boxes.skip(1)) {
+    prefixBounds = prefixBounds.expandToInclude(
+      Rect.fromLTRB(box.left, box.top, box.right, box.bottom),
+    );
+  }
+  return MatrixUtils.transformRect(
+    paragraph.getTransformTo(null),
+    prefixBounds,
+  );
 }
 
 Rect layoutBounds(WidgetTester tester, Finder finder) {
@@ -446,49 +472,48 @@ void main() {
     }
   });
 
-  testWidgets('Galaxy S25 Ultra의 겹친 손패는 비용과 두 글자 이름을 남긴다', (tester) async {
-    const hand = [
-      defend,
-      guardianSigil,
-      greatPurification,
-      clingingOath,
-      bladeOfGrudge,
-    ];
-    await pumpCombat(
-      tester,
-      textScale: 0.9,
-      device: _galaxyS25Ultra,
-      controller: () => _FixedHandCombatController(hand),
-    );
+  testWidgets('Galaxy S25 Ultra의 겹친 손패는 모든 카드의 비용과 구별용 이름 앞부분을 남긴다', (
+    tester,
+  ) async {
+    for (var start = 0; start < m0Cards.length; start += 5) {
+      final hand = m0Cards.skip(start).take(5).toList();
+      await pumpCombat(
+        tester,
+        textScale: 0.9,
+        device: _galaxyS25Ultra,
+        controller: () => _FixedHandCombatController(hand),
+      );
 
-    try {
-      for (var index = 0; index < 4; index++) {
-        final card = hand[index];
-        final cost = paintBounds(
-          tester,
-          find.byKey(ValueKey('card-cost-${card.id}')),
-        );
-        final label = paintBounds(
-          tester,
-          find.byKey(ValueKey('card-hand-label-${card.id}')),
-        );
-        final coveringCard = paintBounds(
-          tester,
-          find.byKey(ValueKey('hand-card-${index + 1}')),
-        );
+      try {
+        for (var index = 0; index < hand.length - 1; index++) {
+          final card = hand[index];
+          final cost = paintBounds(
+            tester,
+            find.byKey(ValueKey('card-cost-${card.id}')),
+          );
+          final namePrefix = textPrefixPaintBounds(
+            tester,
+            find.byKey(ValueKey('card-name-${card.id}')),
+            handCardLabel(card).length,
+          );
+          final coveringCard = paintBounds(
+            tester,
+            find.byKey(ValueKey('hand-card-${index + 1}')),
+          );
 
-        // 오른쪽 카드는 뒤에 칠해져 왼쪽 카드의 오른쪽을 덮는다. 식별자는
-        // 다음 카드의 시작 전에서 끝나야 선택 전에도 읽힌다.
-        expect(cost.right, lessThan(coveringCard.left));
-        expect(label.right, lessThan(coveringCard.left));
+          // 오른쪽 카드는 뒤에 칠해져 왼쪽 카드의 오른쪽을 덮는다. 식별자는
+          // 다음 카드의 시작 전에서 끝나야 선택 전에도 읽힌다.
+          expect(cost.right, lessThan(coveringCard.left));
+          expect(namePrefix.right, lessThan(coveringCard.left));
+        }
+        expect(tester.takeException(), isNull);
+      } finally {
+        await disposeTree(tester);
       }
-      expect(tester.takeException(), isNull);
-    } finally {
-      await disposeTree(tester);
     }
   });
 
-  testWidgets('겹친 손패의 이름 조각을 이어 읽으면 카드 이름 한 번이다', (tester) async {
+  testWidgets('긴 첫 어절의 이름도 원문 텍스트 하나로 그린다', (tester) async {
     const card = guardianSigil;
     await pumpCombat(
       tester,
@@ -498,16 +523,44 @@ void main() {
     );
 
     try {
-      final label = tester.widget<Text>(
-        find.byKey(ValueKey('card-hand-label-${card.id}')),
-      );
-      final remainder = tester.widget<Text>(
-        find.byKey(ValueKey('card-hand-name-remainder-${card.id}')),
+      final name = tester.widget<Text>(
+        find.byKey(ValueKey('card-name-${card.id}')),
       );
 
-      expect('${label.data}${remainder.data}', card.name);
+      expect(name.data, card.name);
     } finally {
       await disposeTree(tester);
+    }
+  });
+
+  testWidgets('카드 이름은 원문 공백을 보존한 텍스트 하나로 그린다', (tester) async {
+    const cards = [
+      greedyBarrier,
+      recoveredEnergy,
+      cleanCut,
+      ironGuard,
+      confession,
+    ];
+
+    for (final card in cards) {
+      await pumpCombat(
+        tester,
+        textScale: 0.9,
+        device: _galaxyS25Ultra,
+        controller: () => _FixedHandCombatController([card]),
+      );
+
+      try {
+        final name = find.byKey(ValueKey('card-name-${card.id}'));
+        expect(name, findsOneWidget);
+        final renderedName = tester.widget<Text>(name).data;
+
+        // 이름을 한 텍스트로 그리면 조사·어미 앞에 새 공백을 넣을 여지가 없다.
+        expect(card.name.contains(renderedName!), isTrue);
+        expect(renderedName, card.name);
+      } finally {
+        await disposeTree(tester);
+      }
     }
   });
 

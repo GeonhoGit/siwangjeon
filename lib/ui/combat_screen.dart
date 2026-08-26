@@ -1226,8 +1226,6 @@ class _CardView extends StatelessWidget {
     final damage = previewDamage(state, card);
     final block = previewBlock(state, card);
     final effects = cardEffectLabels(card, damage: damage, block: block);
-    final handLabel = handCardLabel(card);
-    final nameRemainder = card.name.substring(handLabel.length);
     final effectLines = [
       effects.take(2).join(' · '),
       if (effects.length > 2) effects.skip(2).join(' · '),
@@ -1283,33 +1281,12 @@ class _CardView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 5),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  key: ValueKey('card-hand-label-${card.id}'),
-                  handLabel,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (nameRemainder.isNotEmpty) ...[
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      key: ValueKey('card-hand-name-remainder-${card.id}'),
-                      nameRemainder,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+            Text(
+              key: ValueKey('card-name-${card.id}'),
+              card.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             for (var index = 0; index < effectLines.length; index++)
