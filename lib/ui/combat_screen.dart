@@ -33,6 +33,7 @@ import 'labels.dart';
 const _attackColor = Color(0xFFB2332B);
 const _skillColor = Color(0xFF2E6B6B);
 const _karmaColor = Color(0xFFC9A227);
+const _cardMinimumHeight = 132.0;
 
 class CombatScreen extends ConsumerStatefulWidget {
   const CombatScreen({super.key});
@@ -85,57 +86,74 @@ class _CombatScreenState extends ConsumerState<CombatScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Stack(
-          children: [
-            Column(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // §5.1의 60%는 손패가 반드시 차지할 고정 비율이 아니라, 모든
+            // 상호작용 요소가 머물 수 있는 하한 경계다. 손패는 실제 카드 높이만
+            // 쓰고, 남는 공간은 적·정보 영역에 준다. 긴 폰트가 손패를 키워도
+            // 이 상한이 탭 대상을 화면 상단 40%로 밀어 올리지 않는다.
+            final maxHandHeight = constraints.maxHeight * 0.6;
+
+            return Stack(
               children: [
-                _StatusBar(state: state, elapsed: _stopwatch.elapsed),
-
-                // §5.1 — 상단 40%는 정보 영역, 탭 대상이 아니다.
-                // 다만 대상 지정 중일 때만 적이 탭을 받는다(§5.3).
-                Expanded(
-                  flex: 40,
-                  child: _EnemyArea(
-                    state: state,
-                    events: session.lastEvents,
-                    selectedCard: selectedCard,
-                    onTapEnemy: selectedCard != null && selectedCard.targeted
-                        ? (index) => _play(index)
-                        : null,
-                  ),
+                Column(
+                  children: [
+                    _StatusBar(state: state, elapsed: _stopwatch.elapsed),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          // §5.1 — 상단은 정보 영역이다. 다만 대상 지정 중일 때만
+                          // 적이 탭을 받는다(§5.3).
+                          Expanded(
+                            child: _EnemyArea(
+                              state: state,
+                              events: session.lastEvents,
+                              selectedCard: selectedCard,
+                              onTapEnemy:
+                                  selectedCard != null && selectedCard.targeted
+                                  ? (index) => _play(index)
+                                  : null,
+                            ),
+                          ),
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: maxHandHeight,
+                            ),
+                            child: _HandArea(
+                              state: state,
+                              actionCount: session.actionLog.length,
+                              selected: _selected,
+                              onTapCard: _onTapCard,
+                              onEndTurn: state.isOver
+                                  ? null
+                                  : () {
+                                      setState(() => _selected = null);
+                                      ref
+                                          .read(
+                                            combatControllerProvider.notifier,
+                                          )
+                                          .endTurn();
+                                    },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-
-                // §5.1 — 하단 60%에 모든 상호작용 요소를 배치한다.
-                Expanded(
-                  flex: 60,
-                  child: _HandArea(
-                    state: state,
-                    actionCount: session.actionLog.length,
-                    selected: _selected,
-                    onTapCard: _onTapCard,
-                    onEndTurn: state.isOver
-                        ? null
-                        : () {
-                            setState(() => _selected = null);
-                            ref
-                                .read(combatControllerProvider.notifier)
-                                .endTurn();
-                          },
+                if (state.isOver)
+                  _OutcomeOverlay(
+                    outcome: state.outcome!,
+                    turn: state.turn,
+                    karma: state.karma,
+                    elapsed: _stopwatch.elapsed,
+                    seed: session.seed,
+                    onRestart: () =>
+                        ref.read(combatControllerProvider.notifier).restart(),
                   ),
-                ),
               ],
-            ),
-            if (state.isOver)
-              _OutcomeOverlay(
-                outcome: state.outcome!,
-                turn: state.turn,
-                karma: state.karma,
-                elapsed: _stopwatch.elapsed,
-                seed: session.seed,
-                onRestart: () =>
-                    ref.read(combatControllerProvider.notifier).restart(),
-              ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -342,8 +360,7 @@ class _EnemyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final intent = intentLabel(enemy.intent);
-    final intentText = intentDamage == null ? intent : '$intent $intentDamage';
+    final intentText = intentLabel(enemy.intent, damage: intentDamage);
 
     return GestureDetector(
       onTap: onTap,
@@ -540,17 +557,16 @@ class _HandArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         _ResourceRow(state: state),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _Fan(
-              state: state,
-              actionCount: actionCount,
-              selected: selected,
-              onTapCard: onTapCard,
-            ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _Fan(
+            state: state,
+            actionCount: actionCount,
+            selected: selected,
+            onTapCard: onTapCard,
           ),
         ),
         Padding(
@@ -640,6 +656,9 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   static const _selectionDuration = Duration(milliseconds: 120);
 
   late final AnimationController _selectionController;
+  final _cardKeys = <int, GlobalKey>{};
+  Map<int, Size> _cardSizes = {};
+  bool _measurementScheduled = false;
   int? _previousSelected;
 
   @override
@@ -650,11 +669,17 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
       duration: _selectionDuration,
       value: widget.selected == null ? 0 : 1,
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureCards());
   }
 
   @override
   void didUpdateWidget(covariant _Fan oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (widget.state.hand.length != oldWidget.state.hand.length) {
+      _cardSizes = {};
+    }
+    _scheduleMeasurement();
 
     if (widget.actionCount != oldWidget.actionCount) {
       // 적용된 액션은 항상 손패를 바꾼다. 같은 카드가 같은 순서로 다시 뽑혀도
@@ -682,36 +707,95 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final hand = widget.state.hand;
     if (hand.isEmpty) {
-      return Center(
-        child: Text(
-          '손패 없음',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+      return SizedBox(
+        height: _cardMinimumHeight,
+        child: Center(
+          child: Text(
+            '손패 없음',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+          ),
         ),
       );
     }
 
-    return Flow(
-      delegate: _HandFanDelegate(
-        cardCount: hand.length,
-        selected: widget.selected,
-        previousSelected: _previousSelected,
-        selectionProgress: _selectionController,
-      ),
-      children: [
-        for (var i = 0; i < hand.length; i++)
-          GestureDetector(
-            key: ValueKey('hand-card-$i'),
-            onTap: widget.state.isOver ? null : () => widget.onTapCard(i),
-            child: _CardView(
-              card: hand[i],
-              state: widget.state,
-              width: _cardWidth,
-              selected: widget.selected == i,
-              playable:
-                  widget.state.energy >= hand[i].cost && !widget.state.isOver,
-            ),
+    final sizes = [
+      for (var i = 0; i < hand.length; i++)
+        _cardSizes[i] ?? const Size(_cardWidth, _cardMinimumHeight),
+    ];
+
+    return AnimatedBuilder(
+      animation: _selectionController,
+      builder: (context, child) {
+        final height = _HandFanDelegate.requiredHeight(
+          sizes: sizes,
+          selected: widget.selected,
+          previousSelected: _previousSelected,
+          selectionProgress: _selectionController.value,
+        );
+        return SizedBox(height: height, child: child);
+      },
+      child: NotificationListener<SizeChangedLayoutNotification>(
+        onNotification: (notification) {
+          _scheduleMeasurement();
+          return true;
+        },
+        child: Flow(
+          key: const ValueKey('hand-fan'),
+          delegate: _HandFanDelegate(
+            cardCount: hand.length,
+            selected: widget.selected,
+            previousSelected: _previousSelected,
+            selectionProgress: _selectionController,
           ),
-      ],
+          children: [
+            for (var i = 0; i < hand.length; i++)
+              SizeChangedLayoutNotifier(
+                key: _cardKeys.putIfAbsent(i, GlobalKey.new),
+                child: GestureDetector(
+                  key: ValueKey('hand-card-$i'),
+                  onTap: widget.state.isOver ? null : () => widget.onTapCard(i),
+                  child: _CardView(
+                    card: hand[i],
+                    state: widget.state,
+                    width: _cardWidth,
+                    selected: widget.selected == i,
+                    playable:
+                        widget.state.energy >= hand[i].cost &&
+                        !widget.state.isOver,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _scheduleMeasurement() {
+    if (_measurementScheduled) return;
+    _measurementScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measurementScheduled = false;
+      _measureCards();
+    });
+  }
+
+  void _measureCards() {
+    if (!mounted) return;
+
+    final nextSizes = <int, Size>{
+      for (var i = 0; i < widget.state.hand.length; i++)
+        if (_cardKeys[i]?.currentContext?.size case final Size size) i: size,
+    };
+    if (nextSizes.isEmpty || _sameCardSizes(nextSizes)) return;
+
+    setState(() => _cardSizes = nextSizes);
+  }
+
+  bool _sameCardSizes(Map<int, Size> nextSizes) {
+    if (_cardSizes.length != nextSizes.length) return false;
+    return nextSizes.entries.every(
+      (entry) => _cardSizes[entry.key] == entry.value,
     );
   }
 }
@@ -735,9 +819,42 @@ class _HandFanDelegate extends FlowDelegate {
   final int? previousSelected;
   final Animation<double> _selectionProgress;
 
+  static double requiredHeight({
+    required List<Size> sizes,
+    required int? selected,
+    required int? previousSelected,
+    required double selectionProgress,
+  }) {
+    var height = _edgeInset;
+
+    for (var i = 0; i < sizes.length; i++) {
+      final offset = i - (sizes.length - 1) / 2;
+      final angle = selected == i ? 0.0 : offset * _rotationPerOffset;
+      final scale = selected == i
+          ? 1 + (_selectedScale - 1) * selectionProgress
+          : previousSelected == i
+          ? _selectedScale - (_selectedScale - 1) * selectionProgress
+          : 1.0;
+      final size = sizes[i];
+      final projectedHeight =
+          scale *
+          (size.height * math.cos(angle.abs()) +
+              size.width * math.sin(angle.abs()));
+      height = math.max(
+        height,
+        _edgeInset + projectedHeight + (selected == i ? _selectedLift : 0),
+      );
+    }
+
+    return height;
+  }
+
   @override
   BoxConstraints getConstraintsForChild(int index, BoxConstraints constraints) {
-    return constraints.loosen();
+    // 팬의 높이는 자식이 실제로 필요로 한 높이로 다음 프레임에 다시 잡는다.
+    // 여기서 Flow의 임시 높이를 자식의 최대 높이로 넘기면 긴 글자가 측정되기
+    // 전에 잘려 카드 내부 Column이 오버플로한다.
+    return BoxConstraints(maxWidth: constraints.maxWidth);
   }
 
   @override
@@ -858,7 +975,7 @@ class _CardView extends StatelessWidget {
       opacity: playable ? 1 : 0.45,
       child: Container(
         width: width,
-        constraints: const BoxConstraints(minHeight: 132),
+        constraints: const BoxConstraints(minHeight: _cardMinimumHeight),
         decoration: BoxDecoration(
           color: const Color(0xFF241C20),
           borderRadius: BorderRadius.circular(9),
