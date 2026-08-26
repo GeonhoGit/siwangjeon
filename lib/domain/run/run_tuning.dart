@@ -38,6 +38,9 @@ class RunTuning {
     this.combatEncounterSize = 3,
     this.eliteEncounterSize = 3,
     this.bossEncounterSize = 3,
+    this.cardRewardChoiceCount = 3,
+    this.baseMoneyReward = 15,
+    this.eliteMoneyRewardMultiplier = 2,
   }) : assert(bossesPerAct == 1),
        assert(nodesPerAct > 1),
        assert(minNodesPerAct > 0),
@@ -59,7 +62,10 @@ class RunTuning {
        assert(lastBranchDepth < nodesPerAct - 1),
        assert(combatEncounterSize > 0),
        assert(eliteEncounterSize > 0),
-       assert(bossEncounterSize > 0);
+       assert(bossEncounterSize > 0),
+       assert(cardRewardChoiceCount > 0),
+       assert(baseMoneyReward >= 0),
+       assert(eliteMoneyRewardMultiplier > 0);
 
   /// 기획서 §2.1의 “7 노드마다 시왕 심판”과 §4.1의 “막당 약 15개”는
   /// 함께 만족할 수 없다. 사용자는 막당 마지막 시왕 1명과 방문 깊이 15개를
@@ -120,6 +126,16 @@ class RunTuning {
   /// 전용 보스 적이 생기기 전의 임시 구성 수. M1에서는 M0 적 풀을 재사용하며,
   /// 전용 보스를 도입할 다음 단계에서 이 자리가 보스 구성을 가리킨다.
   final int bossEncounterSize;
+
+  /// §2.1의 전투 카드 보상 후보 수. M1-3에서는 항상 이 중 하나를 고른다.
+  final int cardRewardChoiceCount;
+
+  /// 일반 전투 승리 뒤 즉시 더하는 노잣돈.
+  final int baseMoneyReward;
+
+  /// 정예전의 임시 보상 배수. 유물이 들어오면 카드 보상과 함께 이 계층에서
+  /// 정예 전용 보상으로 확장한다.
+  final int eliteMoneyRewardMultiplier;
 
   bool isBranchingDepth(int depth) =>
       depth >= firstBranchDepth && depth <= lastBranchDepth;

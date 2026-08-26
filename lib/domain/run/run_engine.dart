@@ -10,6 +10,7 @@ import '../rng/rng.dart';
 import 'run_action.dart';
 import 'run_content.dart';
 import 'run_map.dart';
+import 'run_node_type.dart';
 import 'run_tuning.dart';
 import 'run_state.dart';
 
@@ -42,8 +43,10 @@ class RunProgress {
     required this.hp,
     required this.maxHp,
     required this.karma,
+    required this.money,
     required List<CardDef> deck,
     this.combat,
+    this.pendingCardReward,
     this.outcome,
   }) : visitedNodeIds = List.unmodifiable(visitedNodeIds),
        deck = List.unmodifiable(deck);
@@ -57,6 +60,9 @@ class RunProgress {
   final int maxHp;
   final int karma;
 
+  /// 전투 승리 때 즉시 얻고, 이후 상점에서 쓸 런 지속 화폐.
+  final int money;
+
   /// 보상이 생기기 전에는 시작 덱이며, 이후 단계에서는 보상 액션을 재생한
   /// 결과가 이 자리에 들어온다.
   final List<CardDef> deck;
@@ -64,6 +70,9 @@ class RunProgress {
   /// 현재 전투 중이거나 패배로 끝난 전투 상태. 승리한 전투는 결과를 런 값으로
   /// 반영한 뒤 비워 다음 이동이 가능하게 한다.
   final CombatState? combat;
+
+  /// 승리한 전투에서 다시 파생한 3택 1 후보. 저장하지 않고 액션 로그에서 복원한다.
+  final CardReward? pendingCardReward;
 
   final RunOutcome? outcome;
 
@@ -75,6 +84,18 @@ class RunProgress {
   bool get isOver => outcome != null;
 
   bool get isInCombat => combat != null && !combat!.isOver;
+}
+
+/// 전투 승리 뒤 선택을 기다리는 카드 보상.
+///
+/// 후보는 저장 상태가 아니라 노드별 reward 시드에서 다시 뽑는다. [nodeId]는
+/// 선택 액션이 현재 보상에 속하는지 검증하는 최소한의 문맥이다.
+class CardReward {
+  CardReward({required this.nodeId, required List<CardDef> cards})
+    : cards = List.unmodifiable(cards);
+
+  final int nodeId;
+  final List<CardDef> cards;
 }
 
 /// 새 런의 저장 가능한 뼈대를 만든다.
@@ -93,6 +114,16 @@ List<RunAction> legalRunActions(
 }) {
   final progress = replayRun(state, tuning: tuning, content: content);
   if (progress.isOver) return const [];
+
+  final pendingCardReward = progress.pendingCardReward;
+  if (pendingCardReward != null) {
+    // §2.1은 카드 보상을 3택 1로 정한다. 덱을 얇게 유지하는 건 중요한 전략이지만,
+    // 건너뛰기는 그 선택지를 명시하는 후속 기획이 생길 때까지 추가하지 않는다.
+    return [
+      for (final card in pendingCardReward.cards)
+        ChooseCardReward(nodeId: pendingCardReward.nodeId, cardId: card.id),
+    ];
+  }
 
   if (progress.isInCombat) {
     final nodeId = progress.currentNodeId!;
@@ -153,11 +184,13 @@ RunProgress replayRun(
 }) {
   final map = generateActOneMap(state.seed, tuning: tuning);
   final visitedNodeIds = <int>[];
-  final deck = content?.deck ?? const <CardDef>[];
+  final deck = List<CardDef>.of(content?.deck ?? const <CardDef>[]);
   var hp = content?.maxHp ?? 0;
   final maxHp = content?.maxHp ?? 0;
   var karma = content?.startingKarma ?? 0;
+  var money = content?.startingMoney ?? 0;
   CombatState? combat;
+  CardReward? pendingCardReward;
   RunOutcome? outcome;
   final combatLogNodeIds = <int>{};
 
@@ -170,6 +203,9 @@ RunProgress replayRun(
         if (combat != null) {
           throw IllegalRunActionError('전투가 끝나기 전에는 다음 노드로 이동할 수 없다');
         }
+        if (pendingCardReward != null) {
+          throw IllegalRunActionError('카드 보상을 고르기 전에는 다음 노드로 이동할 수 없다');
+        }
 
         final progress = RunProgress(
           map: map,
@@ -177,6 +213,7 @@ RunProgress replayRun(
           hp: hp,
           maxHp: maxHp,
           karma: karma,
+          money: money,
           deck: deck,
         );
         if (!_legalNextNodeIds(progress).contains(nodeId)) {
@@ -228,6 +265,14 @@ RunProgress replayRun(
             hp = currentCombat.hp;
             karma = currentCombat.karma;
             combat = null;
+            final node = map.nodeById(nodeId);
+            money += moneyRewardForNode(node, tuning: tuning);
+            pendingCardReward = cardRewardForNode(
+              runSeed: state.seed,
+              node: node,
+              content: content!,
+              tuning: tuning,
+            );
           case CombatOutcome.defeat:
             hp = currentCombat.hp;
             karma = currentCombat.karma;
@@ -237,6 +282,30 @@ RunProgress replayRun(
             combat = currentCombat;
             break;
         }
+
+      case ChooseCardReward(:final nodeId, :final cardId):
+        if (outcome != null) {
+          throw IllegalRunActionError('끝난 런에는 카드 보상을 고를 수 없다');
+        }
+        final reward = pendingCardReward;
+        if (reward == null) {
+          throw IllegalRunActionError('고를 카드 보상이 없다');
+        }
+        if (reward.nodeId != nodeId) {
+          throw IllegalRunActionError('카드 보상 노드가 현재 보상과 맞지 않는다');
+        }
+        CardDef? selectedCard;
+        for (final card in reward.cards) {
+          if (card.id == cardId) {
+            selectedCard = card;
+            break;
+          }
+        }
+        if (selectedCard == null) {
+          throw IllegalRunActionError('카드 보상 후보에 없는 카드를 골랐다');
+        }
+        deck.add(selectedCard);
+        pendingCardReward = null;
     }
   }
 
@@ -246,8 +315,10 @@ RunProgress replayRun(
     hp: hp,
     maxHp: maxHp,
     karma: karma,
+    money: money,
     deck: deck,
     combat: combat,
+    pendingCardReward: pendingCardReward,
     outcome: outcome,
   );
 }
@@ -264,6 +335,13 @@ int combatSeedForNode(int runSeed, int nodeId) =>
 /// 적 구성도 노드마다 분리한 encounter 스트림으로 뽑는다.
 int encounterSeedForNode(int runSeed, int nodeId) =>
     _nodeSeed(runSeed, nodeId, 0x85EBCA6B);
+
+/// 카드 보상도 노드별로 독립된 reward 시드를 쓴다.
+///
+/// 앞 노드에서 어느 보상을 골랐는지와 무관하게 다음 노드의 후보를 재생해야 한다.
+/// combat·encounter 소금과 다른 값을 써서 스트림과 파생 시드가 겹치지 않게 한다.
+int rewardSeedForNode(int runSeed, int nodeId) =>
+    _nodeSeed(runSeed, nodeId, 0x27D4EB2F);
 
 /// [RngStream.encounter]에서 현재 노드의 적을 결정론적으로 구성한다.
 ///
@@ -302,6 +380,62 @@ List<Enemy> encounterForNode({
   }
 
   return List.unmodifiable(enemies);
+}
+
+/// 현재 노드의 카드 보상 후보를 `RngStream.reward`에서 뽑는다.
+///
+/// 정예는 유물이 없는 M1-3 동안 같은 카드 보상을 임시로 사용한다. 유물 콘텐츠가
+/// 들어오면 이 함수가 정예의 유물 후보를 함께 만들 위치이며, 선택 기록은 여전히
+/// 액션 로그만으로 복원되어야 한다.
+CardReward cardRewardForNode({
+  required int runSeed,
+  required RunNode node,
+  required RunContent content,
+  RunTuning tuning = RunTuning.m1,
+}) {
+  if (!node.hostsCombat) {
+    throw ArgumentError.value(node, 'node', '전투가 아닌 노드에는 카드 보상이 없다');
+  }
+  if (tuning.cardRewardChoiceCount > content.cardRewardPool.length) {
+    throw ArgumentError.value(
+      tuning.cardRewardChoiceCount,
+      'tuning card reward choice count',
+      '카드 보상 풀보다 많은 서로 다른 후보를 제시할 수 없다',
+    );
+  }
+
+  var rng = Rng.forStream(
+    rewardSeedForNode(runSeed, node.id),
+    RngStream.reward,
+  );
+  final available = List<CardDef>.of(content.cardRewardPool);
+  final cards = <CardDef>[];
+  for (var i = 0; i < tuning.cardRewardChoiceCount; i++) {
+    final (index, next) = rng.nextInt(available.length);
+    rng = next;
+    cards.add(available.removeAt(index));
+  }
+
+  return CardReward(nodeId: node.id, cards: cards);
+}
+
+/// 전투 승리 때 즉시 얻는 노잣돈. 정예는 유물 보상 전까지 더 많은 화폐를 준다.
+int moneyRewardForNode(RunNode node, {RunTuning tuning = RunTuning.m1}) {
+  if (!node.hostsCombat) {
+    throw ArgumentError.value(node, 'node', '전투가 아닌 노드에는 노잣돈 보상이 없다');
+  }
+  return switch (node.type) {
+    RunNodeType.elite =>
+      tuning.baseMoneyReward * tuning.eliteMoneyRewardMultiplier,
+    RunNodeType.combat || RunNodeType.boss => tuning.baseMoneyReward,
+    RunNodeType.shop ||
+    RunNodeType.wildCamp ||
+    RunNodeType.event => throw ArgumentError.value(
+      node.type,
+      'node.type',
+      '전투가 아닌 노드에는 노잣돈 보상이 없다',
+    ),
+  };
 }
 
 CombatState _beginNodeCombat({
@@ -359,6 +493,11 @@ bool _sameRunAction(RunAction left, RunAction right) => switch ((left, right)) {
   ) =>
     leftNodeId == rightNodeId &&
         _sameCombatActionLists(leftActions, rightActions),
+  (
+    ChooseCardReward(nodeId: final leftNodeId, cardId: final leftCardId),
+    ChooseCardReward(nodeId: final rightNodeId, cardId: final rightCardId),
+  ) =>
+    leftNodeId == rightNodeId && leftCardId == rightCardId,
   _ => false,
 };
 
