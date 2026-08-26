@@ -33,6 +33,30 @@ const _attackColor = Color(0xFFB2332B);
 const _skillColor = Color(0xFF2E6B6B);
 const _karmaColor = Color(0xFFC9A227);
 const _cardMinimumHeight = 132.0;
+const _cardSecondEffectLineAllowance = 12.0;
+// 예고와 체력 바의 좌우 경계를 맞춰 적의 다음 행동과 생존 상태를 함께 읽는다.
+const _enemyMeterWidth = 92.0;
+
+double _cardReservedMinimumHeight(TextScaler textScaler, int effectCount) =>
+    textScaler.scale(
+      _cardMinimumHeight +
+          (effectCount > 2 ? _cardSecondEffectLineAllowance : 0),
+    );
+
+double _cardReservedMinimumHeightFor(
+  CombatState state,
+  CardDef card,
+  TextScaler textScaler,
+) {
+  // Flow의 초기 높이도 카드와 같은 domain 미리보기·표기 목록을 써야 자연스러운
+  // 줄바꿈 뒤 다음 프레임에 손패가 튀지 않는다.
+  final effectCount = cardEffectLabels(
+    card,
+    damage: previewDamage(state, card),
+    block: previewBlock(state, card),
+  ).length;
+  return _cardReservedMinimumHeight(textScaler, effectCount);
+}
 
 class CombatScreen extends ConsumerStatefulWidget {
   const CombatScreen({super.key});
@@ -379,17 +403,20 @@ class _EnemyView extends StatelessWidget {
           // §3.1 — 다음 행동은 항상 아이콘으로 미리 표시한다.
           // M0은 임시로 글자다.
           SizedBox(
-            width: 92,
+            width: _enemyMeterWidth,
             child: Container(
+              alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.45),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
               ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(intentText, style: const TextStyle(fontSize: 12)),
+              child: Text(
+                key: ValueKey('enemy-intent-label-${enemy.id}'),
+                intentText,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12),
               ),
             ),
           ),
@@ -428,7 +455,7 @@ class _EnemyView extends StatelessWidget {
           const SizedBox(height: 5),
 
           SizedBox(
-            width: 92,
+            width: _enemyMeterWidth,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(3),
               child: LinearProgressIndicator(
@@ -725,9 +752,11 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final hand = widget.state.hand;
+    final textScaler = MediaQuery.textScalerOf(context);
+    final emptyHandHeight = _cardReservedMinimumHeight(textScaler, 0);
     if (hand.isEmpty) {
       return SizedBox(
-        height: _cardMinimumHeight,
+        height: emptyHandHeight,
         child: Center(
           child: Text(
             '손패 없음',
@@ -739,7 +768,11 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
 
     final sizes = [
       for (var i = 0; i < hand.length; i++)
-        _cardSizes[i] ?? const Size(_cardWidth, _cardMinimumHeight),
+        _cardSizes[i] ??
+            Size(
+              _cardWidth,
+              _cardReservedMinimumHeightFor(widget.state, hand[i], textScaler),
+            ),
     ];
 
     return AnimatedBuilder(
@@ -832,6 +865,7 @@ class _HandFanLayout {
   });
 
   static const _edgeInset = 8.0;
+  static const _cardGap = 2.0;
   static const _rotationPerOffset = 0.075;
   static const _selectedScale = 1.12;
   static const _selectedLift = 34.0;
@@ -869,7 +903,7 @@ class _HandFanLayout {
     // 확대되어도 간격과 양끝 여백이 흔들리지 않는다.
     final maxStableSpread = cards.fold(
       0.0,
-      (widest, card) => math.max(widest, card.baseProjectedWidth),
+      (widest, card) => math.max(widest, card.baseProjectedWidth + _cardGap),
     );
 
     return _HandFanLayout._(
@@ -1077,16 +1111,17 @@ class _CardView extends StatelessWidget {
       effects.take(2).join(' · '),
       if (effects.length > 2) effects.skip(2).join(' · '),
     ];
-    final costDiameter = MediaQuery.textScalerOf(context).scale(20);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final costDiameter = textScaler.scale(20);
 
     return Opacity(
       opacity: playable ? 1 : 0.45,
       child: Container(
         width: width,
         constraints: BoxConstraints(
-          // 둘째 효과 줄이 있는 카드는 내용을 누르지 않을 여백을 따로 둔다.
-          // 높이는 카드별 실제 내용 수에 따라 달라지고, Flow가 그 값을 측정한다.
-          minHeight: _cardMinimumHeight + (effects.length > 2 ? 12 : 0),
+          // 큰 글꼴의 두 번째 효과 줄도 첫 Flow 측정부터 예약한다. 이 값은
+          // 최소 높이일 뿐 상한이 아니므로 내용이 더 길면 카드가 계속 커진다.
+          minHeight: _cardReservedMinimumHeight(textScaler, effects.length),
         ),
         decoration: BoxDecoration(
           color: const Color(0xFF241C20),
@@ -1133,21 +1168,14 @@ class _CardView extends StatelessWidget {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-            for (final effectLine in effectLines)
-              SizedBox(
-                width: double.infinity,
-                child: FittedBox(
-                  alignment: Alignment.centerLeft,
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    effectLine,
-                    softWrap: false,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: accent.withValues(alpha: 0.9),
-                    ),
-                  ),
+            for (var index = 0; index < effectLines.length; index++)
+              Text(
+                key: ValueKey('card-effect-line-$index'),
+                effectLines[index],
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: accent.withValues(alpha: 0.9),
                 ),
               ),
           ],

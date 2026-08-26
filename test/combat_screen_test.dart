@@ -7,6 +7,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:siwangjeon/app/app.dart';
@@ -50,6 +51,15 @@ Future<void> pumpCombat(
 /// 태우지 않으면 테스트가 "타이머가 남아 있다"로 실패한다.
 Future<void> disposeTree(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
+}
+
+/// TextScaler와 조상 페인트 변환을 함께 반영한 실제 글자 크기다.
+/// FittedBox가 다시 들어와 축소하면 두 번째 항이 1보다 작아져 이 검사가 실패한다.
+double paintedFontSize(WidgetTester tester, Finder finder) {
+  final text = tester.widget<Text>(finder);
+  final paragraph = tester.renderObject<RenderParagraph>(finder);
+  return paragraph.textScaler.scale(text.style!.fontSize!) *
+      paragraph.getTransformTo(null).getMaxScaleOnAxis();
 }
 
 class _FixedHandCombatController extends CombatController {
@@ -187,6 +197,36 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await disposeTree(tester);
+  });
+
+  testWidgets('예고와 카드 효과 글자는 선택한 배율 그대로 그린다', (tester) async {
+    for (final textScale in [1.3, 2.0]) {
+      await pumpCombat(
+        tester,
+        textScale: textScale,
+        controller: () => _FixedHandCombatController(const [confession]),
+      );
+
+      try {
+        expect(
+          paintedFontSize(
+            tester,
+            find.byKey(const ValueKey('enemy-intent-label-enemy_agwi')),
+          ),
+          closeTo(12 * textScale, 0.01),
+        );
+        expect(
+          paintedFontSize(
+            tester,
+            find.byKey(const ValueKey('card-effect-line-0')),
+          ),
+          closeTo(10 * textScale, 0.01),
+        );
+        expect(tester.takeException(), isNull);
+      } finally {
+        await disposeTree(tester);
+      }
+    }
   });
 
   testWidgets('손패 팬의 위쪽 빈 띠가 남지 않는다', (tester) async {
