@@ -225,6 +225,7 @@ class _Sim {
       hand = List.of(s.hand),
       drawPile = List.of(s.drawPile),
       discardPile = List.of(s.discardPile),
+      activePowers = List.of(s.activePowers),
       enemies = List.of(s.enemies),
       statuses = Map.of(s.statuses),
       rng = s.rng,
@@ -242,6 +243,7 @@ class _Sim {
   List<CardDef> hand;
   List<CardDef> drawPile;
   List<CardDef> discardPile;
+  List<CardDef> activePowers;
   List<Enemy> enemies;
   Map<StatusId, int> statuses;
   Rng rng;
@@ -259,6 +261,7 @@ class _Sim {
         hand: List.unmodifiable(hand),
         drawPile: List.unmodifiable(drawPile),
         discardPile: List.unmodifiable(discardPile),
+        activePowers: List.unmodifiable(activePowers),
         enemies: List.unmodifiable(enemies),
         statuses: Map.unmodifiable(statuses),
         rng: rng,
@@ -309,9 +312,14 @@ class _Sim {
     // 값을 치른다"는 거래 구조를 흐린다. 업은 결과지 재료가 아니다.
     if (card.karma != 0) _changeKarma(card.karma);
 
-    // 힘(power) 카드는 버림더미로 가지 않고 전투 내내 남는다(§3.5).
-    // M0 카드 3장에는 없으므로 분기를 만들지 않는다.
-    discardPile.add(card);
+    // 힘(power) 카드는 버림더미로 가지 않고 전투 내내 활성 영역에 남는다(§3.5).
+    // 활성 영역은 재섞기 경로와 분리되어 있으므로, 덱 구성이 액션 로그 재생
+    // 때도 고정되고 같은 힘 카드가 다시 손에 들어오지 않는다.
+    if (card.type == CardType.power) {
+      activePowers.add(card);
+    } else {
+      discardPile.add(card);
+    }
 
     _checkOutcome();
   }

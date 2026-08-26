@@ -100,6 +100,49 @@ void main() {
   });
 
   group('카드 사용', () {
+    test('힘 카드는 활성 영역에 남고 재섞은 뒤에도 다시 뽑히지 않는다', () {
+      const power = CardDef(
+        id: 'card_test_power',
+        name: '시험의 기세',
+        type: CardType.power,
+        cost: 1,
+        targeted: false,
+        effects: [
+          ApplyStatusEffect(
+            status: StatusId.strength,
+            stacks: 1,
+            target: EffectTarget.self,
+          ),
+        ],
+      );
+      final state = CombatState(
+        turn: 1,
+        hp: 80,
+        maxHp: 80,
+        energy: 3,
+        block: 0,
+        karma: 0,
+        hand: const [power],
+        drawPile: const [],
+        discardPile: deckOf(strike, 5),
+        enemies: [dummy()],
+        rng: start(deck: deckOf(strike, 5)).rng,
+      );
+
+      final played = applyAction(state, const PlayCard(handIndex: 0));
+
+      expect(played.state.activePowers, hasLength(1));
+      expect(played.state.activePowers.single.id, power.id);
+      expect(played.state.discardPile, hasLength(5));
+      expect(played.state.statuses[StatusId.strength], 1);
+
+      final nextTurn = applyAction(played.state, const EndTurn()).state;
+      expect(nextTurn.hand.map((card) => card.id), everyElement(strike.id));
+      expect(nextTurn.activePowers.single.id, power.id);
+      expect(nextTurn.drawPile, isEmpty);
+      expect(nextTurn.discardPile, isEmpty);
+    });
+
     test('타격은 적 체력을 6 깎는다', () {
       final state = start(deck: deckOf(strike, 10), enemies: [dummy(hp: 20)]);
 
