@@ -171,6 +171,30 @@ void expectHandIsInLowerSixtyPercent(WidgetTester tester, int cardCount) {
 }
 
 void main() {
+  test('선택 카드는 손패 팬에서 마지막에 그린다', () {
+    expect(
+      handFanPaintOrder(
+        cardCount: 5,
+        selected: 1,
+        previousSelected: null,
+        selectionProgress: 1,
+      ),
+      [0, 2, 3, 4, 1],
+    );
+  });
+
+  test('선택 전환 중에는 새 선택이 직전 선택보다 앞에 그려진다', () {
+    expect(
+      handFanPaintOrder(
+        cardCount: 5,
+        selected: 3,
+        previousSelected: 1,
+        selectionProgress: 0.5,
+      ),
+      [0, 2, 4, 1, 3],
+    );
+  });
+
   testWidgets('전투 화면이 손패와 적과 턴 종료 버튼을 그린다', (tester) async {
     await pumpCombat(tester);
 
