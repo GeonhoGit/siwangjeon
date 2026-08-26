@@ -660,6 +660,8 @@ class _HandFanDelegate extends FlowDelegate {
 
   static const _edgeInset = 8.0;
   static const _rotationPerOffset = 0.075;
+  static const _selectedScale = 1.12;
+  static const _selectedLift = 34.0;
 
   final int cardCount;
   final int? selected;
@@ -681,10 +683,17 @@ class _HandFanDelegate extends FlowDelegate {
       for (var i = 0; i < cardCount; i++)
         selected == i ? 0.0 : offsets[i] * _rotationPerOffset,
     ];
+    final scales = [
+      for (var i = 0; i < cardCount; i++)
+        selected == i ? _selectedScale : 1.0,
+    ];
+    // Flow는 Matrix4로 그린 확대를 자식 크기에 반영하지 않는다. 실제 그려지는
+    // 폭 w·cos(θ) + h·sin(θ)에 선택 확대까지 포함해야 양끝이 남는다.
     final widestCard = [
       for (var i = 0; i < cardCount; i++)
-        sizes[i].width * math.cos(angles[i].abs()) +
-            sizes[i].height * math.sin(angles[i].abs()),
+        scales[i] *
+            (sizes[i].width * math.cos(angles[i].abs()) +
+                sizes[i].height * math.sin(angles[i].abs())),
     ].reduce(math.max);
 
     final spread = cardCount == 1
@@ -701,15 +710,17 @@ class _HandFanDelegate extends FlowDelegate {
     for (var i = 0; i < cardCount; i++) {
       final size = sizes[i];
       final angle = angles[i];
+      final scale = scales[i];
       final projectedHeight =
-          size.height * math.cos(angle.abs()) +
-          size.width * math.sin(angle.abs());
+          scale *
+          (size.height * math.cos(angle.abs()) +
+              size.width * math.sin(angle.abs()));
       final left = (context.size.width - size.width) / 2 + offsets[i] * spread;
       final top =
           context.size.height -
           _edgeInset -
           (size.height + projectedHeight) / 2 -
-          (selected == i ? 34 : 0);
+          (selected == i ? _selectedLift : 0);
 
       context.paintChild(
         i,
@@ -721,6 +732,7 @@ class _HandFanDelegate extends FlowDelegate {
             1,
           )
           ..rotateZ(angle)
+          ..scaleByDouble(scale, scale, 1, 1)
           ..translateByDouble(-size.width / 2, -size.height / 2, 0, 1),
       );
     }
