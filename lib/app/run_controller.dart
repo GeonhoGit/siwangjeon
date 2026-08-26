@@ -4,9 +4,12 @@
 /// 전투, 보상 선택의 규칙은 여기서 판단하지 않고 모두 domain 함수에 위임한다.
 library;
 
+import 'dart:collection';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/m0_content.dart';
+import '../data/run_storage.dart';
 import '../domain/combat/combat_engine.dart';
 import '../domain/model/combat_action.dart';
 import '../domain/model/game_event.dart';
@@ -27,6 +30,21 @@ final runSeedFactoryProvider = Provider<int Function()>((ref) {
 /// M1에서 사용하는 버전 고정 런 콘텐츠다. domain은 data 레이어를 모르므로
 /// 이 경계에서 주입한다.
 final runContentProvider = Provider<RunContent>((ref) => m0RunContent());
+
+/// 앱 시작점에서 이미 복원한 런을 전달하는 경계다.
+///
+/// 파일 읽기는 비동기라서, 여기서 다시 읽으면 새 런 지도가 잠깐 보인 뒤 바뀐다.
+/// main은 [RunController.loadStoredRun]으로 먼저 검증한 값만 이 provider에 넣고,
+/// 위젯 테스트의 기본값은 null로 유지한다.
+final runInitialStateProvider = Provider<RunState?>((ref) => null);
+
+/// 런 저장소의 주입점이다.
+///
+/// 기본값은 테스트가 실제 디스크를 공유하지 않게 하는 무동작 구현이고, 실앱은
+/// main에서 [FileRunStorage]를 주입한다.
+final runStorageProvider = Provider<RunStorage>(
+  (ref) => const NoopRunStorage(),
+);
 
 /// UI가 한 프레임에 읽는 런 스냅샷.
 class RunSession {
@@ -53,36 +71,101 @@ class RunSession {
 class RunController extends Notifier<RunSession> {
   static const _characterId = 'm0';
 
+  final Queue<RunState> _saveQueue = Queue<RunState>();
+  Future<void> _pendingSave = Future<void>.value();
+  var _isSaving = false;
+
   @override
-  RunSession build() => _snapshot(
-    startRun(
-      seed: ref.read(runSeedFactoryProvider)(),
-      characterId: _characterId,
-    ),
-  );
+  RunSession build() {
+    final restored = ref.read(runInitialStateProvider);
+    return _snapshot(
+      restored ??
+          startRun(
+            seed: ref.read(runSeedFactoryProvider)(),
+            characterId: _characterId,
+          ),
+    );
+  }
+
+  /// 앱이 UI를 만들기 전에 저장 런을 읽고 재생 가능한지 검증한다.
+  ///
+  /// 저장 파일이 없거나, 버전·JSON·콘텐츠가 달라 액션 하나라도 재생되지 않으면
+  /// null을 돌려 새 런을 시작한다. 특히 사라진 카드 id의 보상 선택은 그 뒤 덱을
+  /// 믿을 수 없으므로 로그 일부만 살리지 않는다. 이 경로에서는 저장소를 쓰지
+  /// 않아 손상 파일을 플레이어가 다음 액션을 확정하기 전까지 보존한다.
+  static Future<RunState?> loadStoredRun({
+    required RunStorage storage,
+    required RunContent content,
+  }) async {
+    try {
+      final result = await storage.load();
+      switch (result) {
+        case RunLoadFound(:final state):
+          replayRun(state, content: content);
+          return state;
+        case RunLoadMissing():
+        case RunLoadRejected():
+          return null;
+      }
+    } catch (_) {
+      // 읽기 실패와 콘텐츠 변경으로 생긴 불법 로그는 앱 시작을 막지 않는다.
+      return null;
+    }
+  }
 
   /// domain이 발행한 합법 액션 하나를 기록한다.
   ///
   /// 최종 검증은 [applyRunAction]이 내부에서 [legalRunActions]로 수행한다. 앱
   /// 레이어에는 이동 경로, 보상, 전투의 별도 합법성 규칙이 없다.
   void dispatch(RunAction action) {
-    state = _snapshot(
-      applyRunAction(
-        state.state,
-        action,
-        content: ref.read(runContentProvider),
-      ),
+    final next = applyRunAction(
+      state.state,
+      action,
+      content: ref.read(runContentProvider),
     );
+    state = _snapshot(next);
+    _enqueueSave(next);
   }
 
-  /// 패배 뒤 새 런을 시작하는 UI용 진입점이다. 저장/불러오기는 M1 범위 밖이다.
+  /// 패배 뒤 새 런을 시작하는 UI용 진입점이다.
   void restart({int? seed}) {
-    state = _snapshot(
-      startRun(
-        seed: seed ?? ref.read(runSeedFactoryProvider)(),
-        characterId: _characterId,
-      ),
+    final next = startRun(
+      seed: seed ?? ref.read(runSeedFactoryProvider)(),
+      characterId: _characterId,
     );
+    state = _snapshot(next);
+    // 재시작은 플레이어가 이전 런을 버리겠다고 명시한 경우라 새 런 골격도
+    // 저장한다. 반대로 시작 시 읽기 실패만으로는 저장하지 않는다.
+    _enqueueSave(next);
+  }
+
+  /// 테스트가 저장 큐가 비워질 때까지 기다리는 경계다.
+  Future<void> flushPersistence() => _pendingSave;
+
+  void _enqueueSave(RunState runState) {
+    _saveQueue.add(runState);
+    if (_isSaving) return;
+
+    // 첫 저장은 액션 처리와 같은 호출 스택에서 시작한다. 이후 입력은 한 줄씩
+    // 이어 써서 오래된 스냅샷이 최신 저장을 덮어쓰지 못하게 한다.
+    _isSaving = true;
+    _pendingSave = _drainSaveQueue();
+  }
+
+  Future<void> _drainSaveQueue() async {
+    while (_saveQueue.isNotEmpty) {
+      await _trySave(_saveQueue.removeFirst());
+    }
+    _isSaving = false;
+  }
+
+  Future<void> _trySave(RunState runState) async {
+    try {
+      await ref.read(runStorageProvider).save(runState);
+    } catch (_) {
+      // 저장 실패가 전투 입력과 화면 상태를 되돌리지는 않는다. 다음 액션에서
+      // 다시 저장을 시도하며, 파일 저장소의 임시 파일 전략은 기존 파일을 보존한다.
+    }
   }
 
   RunSession _snapshot(RunState runState) {
