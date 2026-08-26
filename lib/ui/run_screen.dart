@@ -330,9 +330,10 @@ Map<int, Offset> _centersFor(RunMap map, double width) {
   for (final entry in nodesByDepth.entries) {
     final nodes = entry.value
       ..sort((left, right) => left.id.compareTo(right.id));
+    final rowStartSlot = (columnCount - nodes.length) / 2;
     for (var slot = 0; slot < nodes.length; slot++) {
       centers[nodes[slot].id] = Offset(
-        _nodeCenterX(width, slot, columnCount),
+        _nodeCenterX(width, rowStartSlot + slot, columnCount),
         _nodeCenterY(entry.key),
       );
     }
@@ -340,7 +341,7 @@ Map<int, Offset> _centersFor(RunMap map, double width) {
   return centers;
 }
 
-double _nodeCenterX(double width, int slot, int columnCount) {
+double _nodeCenterX(double width, double slot, int columnCount) {
   if (columnCount == 1) return width / 2;
   final availableWidth = width - _mapHorizontalInset * 2;
   return _mapHorizontalInset + availableWidth * slot / (columnCount - 1);

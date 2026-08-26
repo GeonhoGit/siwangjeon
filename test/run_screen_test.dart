@@ -143,7 +143,7 @@ void main() {
     }
   });
 
-  testWidgets('지도 슬롯 열과 직선 간선은 화면 좌표에서도 교차하지 않는다', (tester) async {
+  testWidgets('지도 행은 가운데 정렬되고 직선 간선은 화면 좌표에서도 교차하지 않는다', (tester) async {
     tester.view.physicalSize = _pixel8.physicalSize;
     tester.view.devicePixelRatio = _pixel8.devicePixelRatio;
     addTearDown(tester.view.reset);
@@ -165,7 +165,11 @@ void main() {
               find.byKey(ValueKey('run-node-${node.id}')),
             ).center,
         };
-        _expectFixedSlotColumns(map, centers, seed);
+        final mapViewport = _layoutBounds(
+          tester,
+          find.byKey(const ValueKey('run-map-scroll')),
+        );
+        _expectCenteredRows(map, centers, mapViewport.center.dx, seed);
         _expectNonCrossingEdgesInPixels(map, centers, seed);
         expect(tester.takeException(), isNull);
       }
@@ -279,7 +283,7 @@ void main() {
     }
   });
 
-  testWidgets('두 경계 기기와 글꼴 배율에서 48dp 노드가 넘치지 않는다', (tester) async {
+  testWidgets('두 경계 기기와 글꼴 배율에서 48dp 노드와 3슬롯 행이 넘치지 않는다', (tester) async {
     for (final device in _boundaryDevices) {
       for (final textScale in [1.0, 1.3]) {
         await _pumpRun(
@@ -293,6 +297,12 @@ void main() {
           final map = _containerFor(
             tester,
           ).read(runControllerProvider).progress.map;
+          final mapViewport = _layoutBounds(
+            tester,
+            find.byKey(const ValueKey('run-map-scroll')),
+          );
+          final threeSlotNodes = _nodesAtThreeSlotDepth(map);
+          expect(threeSlotNodes, hasLength(3), reason: device.name);
           for (final node in map.nodes) {
             final bounds = _layoutBounds(
               tester,
@@ -305,6 +315,14 @@ void main() {
               reason: device.name,
             );
           }
+          for (final node in threeSlotNodes) {
+            final bounds = _layoutBounds(
+              tester,
+              find.byKey(ValueKey('run-node-${node.id}')),
+            );
+            expect(bounds.left, greaterThanOrEqualTo(mapViewport.left));
+            expect(bounds.right, lessThanOrEqualTo(mapViewport.right));
+          }
           expect(tester.takeException(), isNull);
         } finally {
           await _disposeTree(tester);
@@ -312,6 +330,14 @@ void main() {
       }
     }
   });
+}
+
+List<RunNode> _nodesAtThreeSlotDepth(RunMap map) {
+  for (final node in map.nodes) {
+    final nodes = map.nodes.where((candidate) => candidate.depth == node.depth);
+    if (nodes.length == 3) return nodes.toList();
+  }
+  return const [];
 }
 
 RunSession _deepMapSession() {
@@ -357,29 +383,27 @@ RunSession _mapSession(RunMap map) {
   );
 }
 
-void _expectFixedSlotColumns(RunMap map, Map<int, Offset> centers, int seed) {
+void _expectCenteredRows(
+  RunMap map,
+  Map<int, Offset> centers,
+  double mapCenterX,
+  int seed,
+) {
   final nodesByDepth = <int, List<RunNode>>{};
   for (final node in map.nodes) {
     nodesByDepth.putIfAbsent(node.depth, () => []).add(node);
   }
 
-  final centerXBySlot = <int, double>{};
   for (final entry in nodesByDepth.entries) {
     final nodes = [...entry.value]
       ..sort((left, right) => left.id.compareTo(right.id));
-    for (var slot = 0; slot < nodes.length; slot++) {
-      final actualCenterX = centers[nodes[slot].id]!.dx;
-      final expectedCenterX = centerXBySlot[slot];
-      if (expectedCenterX == null) {
-        centerXBySlot[slot] = actualCenterX;
-      } else {
-        expect(
-          actualCenterX,
-          closeTo(expectedCenterX, 0.001),
-          reason: 'seed $seed depth ${entry.key} slot $slot',
-        );
-      }
-    }
+    final firstCenterX = centers[nodes.first.id]!.dx;
+    final lastCenterX = centers[nodes.last.id]!.dx;
+    expect(
+      (firstCenterX + lastCenterX) / 2,
+      closeTo(mapCenterX, 0.001),
+      reason: 'seed $seed depth ${entry.key}',
+    );
   }
 }
 
