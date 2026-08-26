@@ -784,4 +784,33 @@ void main() {
 
     await disposeTree(tester);
   });
+
+  testWidgets('정화·체력 대가·드로우·기력·업을 카드에서 함께 읽을 수 있다', (tester) async {
+    await pumpCombat(
+      tester,
+      textScale: 1.3,
+      controller: () => _FixedHandCombatController(const [
+        confession,
+        greatPurification,
+        steadyBreath,
+        recoveredEnergy,
+        hellfireMomentum,
+        clingingOath,
+      ]),
+    );
+
+    try {
+      expect(find.textContaining('업 -8'), findsOneWidget);
+      expect(find.textContaining('체력 -5'), findsOneWidget);
+      expect(find.textContaining('드로우 1'), findsOneWidget);
+      expect(find.textContaining('기력 +1'), findsOneWidget);
+      expect(find.textContaining('업 +3'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expectHandIsOnScreenAndClearOfEndTurn(tester, 6);
+      expectHandIsInsideFlow(tester, 6);
+      expectHandIsInLowerSixtyPercent(tester, 6);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
 }
