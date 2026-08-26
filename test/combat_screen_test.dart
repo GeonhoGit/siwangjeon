@@ -478,6 +478,46 @@ void main() {
     }
   });
 
+  testWidgets('1.3×에서 카드 사용 직후 손패 팬 높이가 정착값으로 유지된다', (tester) async {
+    await pumpCombat(
+      tester,
+      textScale: 1.3,
+      controller: () => _FixedHandCombatController(const [
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+      ]),
+    );
+
+    try {
+      final selected = find.byKey(const ValueKey('hand-card-2'));
+      await tester.tapAt(paintBounds(tester, selected).center);
+      await tester.pump(const Duration(milliseconds: 120));
+
+      await tester.tap(find.text('아귀'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('hand-card-4')), findsNothing);
+      final immediateHeight = layoutBounds(
+        tester,
+        find.byKey(const ValueKey('hand-fan')),
+      ).height;
+
+      await tester.pump();
+      final settledHeight = layoutBounds(
+        tester,
+        find.byKey(const ValueKey('hand-fan')),
+      ).height;
+
+      // 프레임 경계의 부동소수점 오차만 1dp 허용한다. 현재 회귀는 132dp
+      // 대체값으로 돌아가 39.7dp 차이를 낸다.
+      expect((immediateHeight - settledHeight).abs(), lessThanOrEqualTo(1));
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
   testWidgets('같은 내용의 새 손패로 턴 종료하면 이전 선택을 축소하지 않는다', (tester) async {
     await pumpCombat(tester, controller: _SameCardDeckCombatController.new);
 

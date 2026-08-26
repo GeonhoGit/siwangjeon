@@ -676,9 +676,6 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   void didUpdateWidget(covariant _Fan oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (widget.state.hand.length != oldWidget.state.hand.length) {
-      _cardSizes = {};
-    }
     _scheduleMeasurement();
 
     if (widget.actionCount != oldWidget.actionCount) {
