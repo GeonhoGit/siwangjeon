@@ -1,17 +1,91 @@
-# siwangjeon
+# 시왕전 (十王殿)
 
-저승 49일, 열 명의 시왕 앞에서 업으로 심판받는 턴제 로그라이크 덱빌더
+저승 49일, 열 명의 시왕 앞에서 업으로 심판받는 턴제 로그라이크 덱빌더.
 
-## Getting Started
+핵심 축은 하나다 — **지금 세게 밀어붙이고 심판에서 값을 치를 것인가.**
+강한 카드는 업(業)을 쌓고, 업은 전투 중에는 아무 페널티가 없다가
+보스전에서만 청구된다. 모든 카드·유물·사건은 이 축 위에 놓인다.
 
-This project is a starting point for a Flutter application.
+- 기획: [기획서.md](기획서.md)
+- 아트 파이프라인: [AI-파이프라인-실행가이드.md](AI-파이프라인-실행가이드.md)
 
-A few resources to get you started if this is your first Flutter project:
+## 현재 상태 — M0 (전투 프로토타입)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+M0의 목적은 진도가 아니라 **의사결정**이다(기획서 §8.1). 4주 뒤 세 질문에 답한다.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. 업 시스템이 실제로 매 턴 고민을 만드는가? 아니면 "많이 쌓으면 좋다"로 수렴하는가?
+2. 세로 화면에서 카드 5장 + 적이 답답하지 않은가?
+3. 한 전투가 2~3분에 끝나는가?
+
+2·3번이 실패하면 UI 재설계, 1번이 실패하면 핵심 메커니즘을 갈아엎는다.
+이 판단을 4주차에 하는 것과 8개월차에 하는 것의 차이가 이 프로젝트의 성패다.
+
+그래서 전투 화면에 경과 시간과 턴 수가 떠 있고, 종료 화면에 시드가 남는다.
+3번은 기억이 아니라 초시계로 답해야 하는 질문이다.
+
+**M0에는 아트에 손대지 않는다**(§12-5). 지금 화면은 전부 임시 도형이다.
+
+## 실행
+
+```bash
+flutter pub get
+
+# 반복 플레이용 — 가장 빠르다
+flutter run -d chrome
+
+# 실제 타깃
+flutter run -d <안드로이드 기기>
+```
+
+웹은 **반복용이지 판정용이 아니다.** 위 2번(세로 화면)과 3번(전투 길이)은
+마우스와 데스크톱 창에서 답하면 틀린다. 그 두 질문은 실제 기기에서 봐야 한다.
+
+## 검증
+
+```bash
+flutter analyze --fatal-infos
+flutter test
+```
+
+CI(`.github/workflows/ci.yml`)가 main push와 PR에서 이 둘을 강제한다.
+Flutter 버전은 고정돼 있다 — 프레임워크가 올라가는 날 내 커밋과 무관하게
+빨간불이 뜨면 그때부터 CI 결과를 아무도 믿지 않게 된다.
+
+## 구조
+
+```
+lib/
+├─ domain/     ← 순수 Dart. Flutter import 금지.
+│   ├─ model/  카드, 적, 전투 상태 (전부 immutable)
+│   ├─ effect/ 카드 효과 = sealed class + 인터프리터
+│   ├─ combat/ 전투 엔진 + 튜닝 상수
+│   ├─ rng/    결정론 난수 (xorshift32)
+│   └─ run/    런 진행
+├─ data/       ← 콘텐츠 정의, 저장/불러오기, 원격 설정
+├─ app/        ← Riverpod provider
+└─ ui/         ← 화면, 위젯
+```
+
+핵심 규칙은 하나다 — **`domain/`은 Flutter를 모른다.**
+전투 엔진이 순수 함수 `(CombatState, Action) → (CombatState, List<GameEvent>)`이면
+UI 없이 유닛 테스트를 수천 개 돌릴 수 있고, 밸런스 시뮬레이터를 CLI에서 돌릴 수 있고,
+애니메이션은 반환된 이벤트 목록을 재생만 하면 된다(§7.2).
+
+이 규칙은 사람이 지키려 하면 반드시 샌다. import 한 줄이면 깨진다.
+그래서 `test/architecture_test.dart`가 CI에서 막는다.
+
+## 결정론 (§7.4)
+
+런은 **시드 + 액션 로그**로 완전히 재현된다. 저장 파일도 그게 전부다.
+
+- 앱이 죽어도 액션 로그 재생으로 정확히 복구된다
+- 버그를 만나면 종료 화면의 시드만 적어 두면 그대로 다시 볼 수 있다
+- "매일의 저승길"을 서버 없이 구현할 수 있다 (날짜 = 시드)
+
+그래서 `domain/`에는 `dart:math`의 `Random`이 없다. 그건 가변이라
+같은 상태에 같은 액션을 두 번 적용했을 때 결과가 갈린다.
+
+## 라이선스
+
+미정. 아트는 공공누리 제1유형 자료로 학습한 전용 모델로 제작하며,
+출처 표기는 게임 내 크레딧과 스토어 설명에 넣는다(실행가이드 §11.3).
