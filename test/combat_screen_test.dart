@@ -18,29 +18,48 @@ import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
 
+class TestDevice {
+  const TestDevice({
+    required this.name,
+    required this.physicalSize,
+    required this.devicePixelRatio,
+  });
+
+  final String name;
+  final Size physicalSize;
+  final double devicePixelRatio;
+}
+
 /// 이슈 #1을 재현한 Pixel 8의 실제 물리 해상도와 밀도.
 ///
 /// 1080 / 2.625와 2400 / 2.625가 각각 논리 411×914에 해당한다.
-const _pixel8PhysicalSize = Size(1080, 2400);
-const _pixel8DevicePixelRatio = 2.625;
+const _pixel8 = TestDevice(
+  name: 'Pixel 8',
+  physicalSize: Size(1080, 2400),
+  devicePixelRatio: 2.625,
+);
 
 /// Galaxy S25 Ultra (SM-S938N)의 실제 물리 해상도와 density 450.
 ///
 /// 450 / 160 = 2.8125이므로 논리 크기는 384×832다. 이 기기는 Pixel 8보다
 /// 27dp 좁고 82dp 짧아, 겹친 손패의 왼쪽 식별 띠를 검증하는 기준으로 쓴다.
-const _galaxyS25UltraPhysicalSize = Size(1080, 2340);
-const _galaxyS25UltraDevicePixelRatio = 2.8125;
+const _galaxyS25Ultra = TestDevice(
+  name: 'Galaxy S25 Ultra',
+  physicalSize: Size(1080, 2340),
+  devicePixelRatio: 2.8125,
+);
+
+const _boundaryDevices = [_pixel8, _galaxyS25Ultra];
 
 Future<void> pumpCombat(
   WidgetTester tester, {
   double textScale = 1.0,
   int? seed,
   CombatController Function()? controller,
-  Size physicalSize = _pixel8PhysicalSize,
-  double devicePixelRatio = _pixel8DevicePixelRatio,
+  TestDevice device = _pixel8,
 }) async {
-  tester.view.physicalSize = physicalSize;
-  tester.view.devicePixelRatio = devicePixelRatio;
+  tester.view.physicalSize = device.physicalSize;
+  tester.view.devicePixelRatio = device.devicePixelRatio;
   tester.platformDispatcher.textScaleFactorTestValue = textScale;
   addTearDown(tester.view.reset);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -177,6 +196,27 @@ void expectHandIsInLowerSixtyPercent(WidgetTester tester, int cardCount) {
     paintBounds(tester, find.byKey(const ValueKey('end-turn'))).top,
     greaterThanOrEqualTo(interactionBoundary),
   );
+}
+
+double largestScreenBlankBand(WidgetTester tester) {
+  final status = layoutBounds(tester, find.byKey(const ValueKey('status-bar')));
+  final hand = layoutBounds(tester, find.byKey(const ValueKey('hand-area')));
+  final occupied = [
+    for (final enemy in ['enemy_agwi', 'enemy_wongwi', 'enemy_dokgwi'])
+      paintBounds(tester, find.byKey(ValueKey('enemy-body-$enemy'))),
+    layoutBounds(tester, find.byKey(const ValueKey('event-strip'))),
+  ]..sort((left, right) => left.top.compareTo(right.top));
+
+  var occupiedBottom = status.bottom;
+  var largestBlank = 0.0;
+  for (final region in occupied) {
+    final top = math.max(region.top, status.bottom);
+    final bottom = math.min(region.bottom, hand.top);
+    if (bottom <= occupiedBottom) continue;
+    largestBlank = math.max(largestBlank, top - occupiedBottom);
+    occupiedBottom = math.max(occupiedBottom, bottom);
+  }
+  return math.max(largestBlank, hand.top - occupiedBottom);
 }
 
 void main() {
@@ -334,20 +374,46 @@ void main() {
     await disposeTree(tester);
   });
 
-  testWidgets('Pixel 8의 1.0×와 1.3×에서 2장과 5장 손패가 넘치지 않는다', (tester) async {
-    for (final textScale in [1.0, 1.3]) {
-      for (final cardCount in [2, 5]) {
-        await pumpCombat(
-          tester,
-          textScale: textScale,
-          controller: () =>
-              _FixedHandCombatController(List.filled(cardCount, bladeOfGrudge)),
-        );
+  testWidgets('두 경계 기기에서 상태바와 손패 사이에 96dp를 넘는 빈 띠가 없다', (tester) async {
+    for (final device in _boundaryDevices) {
+      await pumpCombat(
+        tester,
+        textScale: device == _galaxyS25Ultra ? 0.9 : 1.0,
+        device: device,
+      );
 
-        expect(tester.takeException(), isNull);
-        expectHandIsOnScreenAndClearOfEndTurn(tester, cardCount);
-        expectHandIsInsideFlow(tester, cardCount);
+      try {
+        // 48dp 최소 터치 타겟 두 개보다 큰 빈 띠는 §8.1의 화면 밀도 판단을
+        // 흐린다. 적·이벤트·손패의 실제 페인트 경계를 합쳐 화면 전체에서 잰다.
+        expect(
+          largestScreenBlankBand(tester),
+          lessThanOrEqualTo(96),
+          reason: '${device.name}의 정보 영역이 비어 있으면 안 된다',
+        );
+      } finally {
         await disposeTree(tester);
+      }
+    }
+  });
+
+  testWidgets('두 경계 기기의 1.0×와 1.3×에서 2장과 5장 손패가 넘치지 않는다', (tester) async {
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        for (final cardCount in [2, 5]) {
+          await pumpCombat(
+            tester,
+            textScale: textScale,
+            device: device,
+            controller: () => _FixedHandCombatController(
+              List.filled(cardCount, bladeOfGrudge),
+            ),
+          );
+
+          expect(tester.takeException(), isNull);
+          expectHandIsOnScreenAndClearOfEndTurn(tester, cardCount);
+          expectHandIsInsideFlow(tester, cardCount);
+          await disposeTree(tester);
+        }
       }
     }
   });
@@ -363,8 +429,7 @@ void main() {
     await pumpCombat(
       tester,
       textScale: 0.9,
-      physicalSize: _galaxyS25UltraPhysicalSize,
-      devicePixelRatio: _galaxyS25UltraDevicePixelRatio,
+      device: _galaxyS25Ultra,
       controller: () => _FixedHandCombatController(hand),
     );
 
@@ -395,24 +460,27 @@ void main() {
     }
   });
 
-  testWidgets('손패 상한까지도 화면과 하단 상호작용 영역 안에 있다', (tester) async {
+  testWidgets('두 경계 기기에서 손패 상한까지 화면과 하단 상호작용 영역 안에 있다', (tester) async {
     final cardCount = CombatTuning.m0.maxHandSize;
 
-    for (final textScale in [1.0, 1.3]) {
-      await pumpCombat(
-        tester,
-        textScale: textScale,
-        controller: () =>
-            _FixedHandCombatController(List.filled(cardCount, bladeOfGrudge)),
-      );
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        await pumpCombat(
+          tester,
+          textScale: textScale,
+          device: device,
+          controller: () =>
+              _FixedHandCombatController(List.filled(cardCount, bladeOfGrudge)),
+        );
 
-      try {
-        expect(tester.takeException(), isNull);
-        expectHandIsOnScreenAndClearOfEndTurn(tester, cardCount);
-        expectHandIsInsideFlow(tester, cardCount);
-        expectHandIsInLowerSixtyPercent(tester, cardCount);
-      } finally {
-        await disposeTree(tester);
+        try {
+          expect(tester.takeException(), isNull);
+          expectHandIsOnScreenAndClearOfEndTurn(tester, cardCount);
+          expectHandIsInsideFlow(tester, cardCount);
+          expectHandIsInLowerSixtyPercent(tester, cardCount);
+        } finally {
+          await disposeTree(tester);
+        }
       }
     }
   });
@@ -441,50 +509,56 @@ void main() {
     await disposeTree(tester);
   });
 
-  testWidgets('Pixel 8의 1.0×와 2.0×에서 긴 손패가 화면과 버튼을 침범하지 않는다', (tester) async {
-    for (final textScale in [2.0, 1.0]) {
-      await pumpCombat(
-        tester,
-        textScale: textScale,
-        controller: () => _FixedHandCombatController(const [
-          bladeOfGrudge,
-          bladeOfGrudge,
-          bladeOfGrudge,
-          bladeOfGrudge,
-          bladeOfGrudge,
-        ]),
-      );
+  testWidgets('두 경계 기기의 1.0×와 2.0×에서 긴 손패가 화면과 버튼을 침범하지 않는다', (tester) async {
+    for (final device in _boundaryDevices) {
+      for (final textScale in [2.0, 1.0]) {
+        await pumpCombat(
+          tester,
+          textScale: textScale,
+          device: device,
+          controller: () => _FixedHandCombatController(const [
+            bladeOfGrudge,
+            bladeOfGrudge,
+            bladeOfGrudge,
+            bladeOfGrudge,
+            bladeOfGrudge,
+          ]),
+        );
 
-      expect(tester.takeException(), isNull);
-      expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+        expect(tester.takeException(), isNull);
+        expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
 
-      await disposeTree(tester);
+        await disposeTree(tester);
+      }
     }
   });
 
-  testWidgets('Pixel 8의 1.0×와 2.0×에서 2장 손패는 겹치지 않는다', (tester) async {
-    for (final textScale in [2.0, 1.0]) {
-      await pumpCombat(
-        tester,
-        textScale: textScale,
-        controller: () =>
-            _FixedHandCombatController(const [bladeOfGrudge, bladeOfGrudge]),
-      );
+  testWidgets('두 경계 기기의 1.0×와 2.0×에서 2장 손패는 겹치지 않는다', (tester) async {
+    for (final device in _boundaryDevices) {
+      for (final textScale in [2.0, 1.0]) {
+        await pumpCombat(
+          tester,
+          textScale: textScale,
+          device: device,
+          controller: () =>
+              _FixedHandCombatController(const [bladeOfGrudge, bladeOfGrudge]),
+        );
 
-      expect(tester.takeException(), isNull);
-      expectHandIsOnScreenAndClearOfEndTurn(tester, 2);
+        expect(tester.takeException(), isNull);
+        expectHandIsOnScreenAndClearOfEndTurn(tester, 2);
 
-      final firstCard = paintBounds(
-        tester,
-        find.byKey(const ValueKey('hand-card-0')),
-      );
-      final secondCard = paintBounds(
-        tester,
-        find.byKey(const ValueKey('hand-card-1')),
-      );
-      expect(firstCard.overlaps(secondCard), isFalse);
+        final firstCard = paintBounds(
+          tester,
+          find.byKey(const ValueKey('hand-card-0')),
+        );
+        final secondCard = paintBounds(
+          tester,
+          find.byKey(const ValueKey('hand-card-1')),
+        );
+        expect(firstCard.overlaps(secondCard), isFalse);
 
-      await disposeTree(tester);
+        await disposeTree(tester);
+      }
     }
   });
 
@@ -737,41 +811,44 @@ void main() {
     }
   });
 
-  testWidgets('Pixel 8의 1.0×와 1.3×에서 양끝 선택 손패도 화면 안에 남는다', (tester) async {
-    for (final textScale in [1.0, 1.3]) {
-      for (final selectedIndex in [0, 4]) {
-        await pumpCombat(
-          tester,
-          textScale: textScale,
-          controller: () => _FixedHandCombatController(const [
-            bladeOfGrudge,
-            bladeOfGrudge,
-            bladeOfGrudge,
-            bladeOfGrudge,
-            bladeOfGrudge,
-          ]),
-        );
-
-        try {
-          final selected = paintBounds(
+  testWidgets('두 경계 기기의 1.0×와 1.3×에서 양끝 선택 손패도 화면 안에 남는다', (tester) async {
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        for (final selectedIndex in [0, 4]) {
+          await pumpCombat(
             tester,
-            find.byKey(ValueKey('hand-card-$selectedIndex')),
+            textScale: textScale,
+            device: device,
+            controller: () => _FixedHandCombatController(const [
+              bladeOfGrudge,
+              bladeOfGrudge,
+              bladeOfGrudge,
+              bladeOfGrudge,
+              bladeOfGrudge,
+            ]),
           );
-          await tester.tapAt(selected.center);
-          await tester.pump();
-          await tester.pump(const Duration(milliseconds: 60));
 
-          expect(tester.takeException(), isNull);
-          expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
-          expectHandIsInsideFlow(tester, 5);
+          try {
+            final selected = paintBounds(
+              tester,
+              find.byKey(ValueKey('hand-card-$selectedIndex')),
+            );
+            await tester.tapAt(selected.center);
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 60));
 
-          await tester.pump(const Duration(milliseconds: 60));
+            expect(tester.takeException(), isNull);
+            expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+            expectHandIsInsideFlow(tester, 5);
 
-          expect(tester.takeException(), isNull);
-          expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
-          expectHandIsInsideFlow(tester, 5);
-        } finally {
-          await disposeTree(tester);
+            await tester.pump(const Duration(milliseconds: 60));
+
+            expect(tester.takeException(), isNull);
+            expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+            expectHandIsInsideFlow(tester, 5);
+          } finally {
+            await disposeTree(tester);
+          }
         }
       }
     }
@@ -820,14 +897,15 @@ void main() {
   });
 
   testWidgets('카드를 탭해 고르고, 적을 탭해 사용한다 (§5.3 탭-탭)', (tester) async {
-    await pumpCombat(tester);
+    await pumpCombat(tester, seed: 7);
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(CombatScreen)),
     );
     final before = container.read(combatControllerProvider).state;
 
-    // 손패에서 대상이 필요한 공격 카드를 찾는다. 덱이 섞이므로 위치는 매번 다르다.
+    // 고정 시드의 손패에서 대상이 필요한 공격 카드를 찾는다. 위치는 셔플에
+    // 따라 달라질 수 있어도 테스트마다 달라지면 탭-탭 배선을 증명할 수 없다.
     final attackIndex = before.hand.indexWhere((c) => c.targeted);
     expect(attackIndex, isNot(-1), reason: '시작 덱에는 공격 카드가 있다');
 
@@ -930,21 +1008,28 @@ void main() {
     }
   });
 
-  testWidgets('적 3마리 조우도 1.0×와 1.3×에서 손패 경계를 지킨다', (tester) async {
-    for (final textScale in [1.0, 1.3]) {
-      await pumpCombat(tester, textScale: textScale, seed: 20260826);
+  testWidgets('두 경계 기기의 1.0×와 1.3×에서 적 3마리 조우도 손패 경계를 지킨다', (tester) async {
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        await pumpCombat(
+          tester,
+          textScale: textScale,
+          device: device,
+          seed: 20260826,
+        );
 
-      try {
-        expect(find.text('아귀'), findsOneWidget);
-        expect(find.text('원귀'), findsOneWidget);
-        expect(find.text('독귀'), findsOneWidget);
-        expect(tester.takeException(), isNull);
-        expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
-        expectHandIsInsideFlow(tester, 5);
-        expectHandIsInLowerSixtyPercent(tester, 5);
-        expectFanHasNoTopBlankBand(tester, 5);
-      } finally {
-        await disposeTree(tester);
+        try {
+          expect(find.text('아귀'), findsOneWidget);
+          expect(find.text('원귀'), findsOneWidget);
+          expect(find.text('독귀'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+          expectHandIsInsideFlow(tester, 5);
+          expectHandIsInLowerSixtyPercent(tester, 5);
+          expectFanHasNoTopBlankBand(tester, 5);
+        } finally {
+          await disposeTree(tester);
+        }
       }
     }
   });
