@@ -1,8 +1,8 @@
 /// 런 맵 구조 상수 (기획서 §2.1, §4.1, §8.2).
 ///
-/// 맵의 길이·보스 주기·노드 비율은 전투 수치와 독립적으로 조정돼야 하므로
-/// `combat/tuning.dart`가 아니라 런 도메인에 모은다. M2 시뮬레이터는 이 값을
-/// 바꿔 런 길이와 경로 구성을 함께 측정할 수 있다.
+/// 막의 길이·보스 수·분기 폭·노드 비율은 전투 수치와 독립적으로 조정해야 하므로
+/// `combat/tuning.dart`가 아닌 이 파일에 모은다. M2 시뮬레이터는 이 값들을
+/// 바꿔 런 길이와 경로 구성을 따로 측정한다.
 library;
 
 import 'run_node_type.dart';
@@ -16,10 +16,15 @@ class RunNodeWeight {
 
 class RunTuning {
   const RunTuning({
-    this.nonBossNodesPerBoss = 7,
-    this.bossesPerAct = 2,
-    this.minNodesPerAct = 14,
-    this.maxNodesPerAct = 16,
+    this.bossesPerAct = 1,
+    this.nodesPerAct = 15,
+    this.minNodesPerAct = 15,
+    this.maxNodesPerAct = 15,
+    this.guaranteedEliteDepth = 7,
+    this.minBranchWidth = 2,
+    this.maxBranchWidth = 3,
+    this.firstBranchDepth = 1,
+    this.lastBranchDepth = 13,
     this.nodeTypeWeights = const [
       RunNodeWeight(RunNodeType.combat, 50),
       RunNodeWeight(RunNodeType.elite, 10),
@@ -27,28 +32,58 @@ class RunTuning {
       RunNodeWeight(RunNodeType.wildCamp, 15),
       RunNodeWeight(RunNodeType.event, 10),
     ],
-  }) : assert(nonBossNodesPerBoss > 0),
-       assert(bossesPerAct > 0),
+  }) : assert(bossesPerAct == 1),
+       assert(nodesPerAct > 1),
        assert(minNodesPerAct > 0),
-       assert(maxNodesPerAct >= minNodesPerAct);
+       assert(maxNodesPerAct >= minNodesPerAct),
+       assert(guaranteedEliteDepth > 0),
+       assert(guaranteedEliteDepth < nodesPerAct - 1),
+       assert(minBranchWidth > 1),
+       assert(maxBranchWidth >= minBranchWidth),
+       assert(firstBranchDepth > 0),
+       assert(lastBranchDepth >= firstBranchDepth),
+       assert(lastBranchDepth < nodesPerAct - 1);
 
-  /// §2.1 — 보스 하나 앞에 놓이는 일반 노드 수.
-  final int nonBossNodesPerBoss;
-
-  /// 1막에서 만나는 심판 횟수. M1은 두 번의 7일 주기를 만든다.
+  /// 기획서 §2.1의 “7 노드마다 시왕 심판”과 §4.1의 “막당 약 15개”는
+  /// 함께 만족할 수 없다. 사용자는 막당 마지막 시왕 1명과 방문 깊이 15개를
+  /// 결정했고, 따라서 §2.1의 보스 주기는 완화한다. 중간 리듬은
+  /// [guaranteedEliteDepth]의 정예전이 맡는다.
   final int bossesPerAct;
 
-  /// §4.1의 "막당 약 15개"를 검증하기 위한 하한.
+  /// 플레이어가 한 막에서 방문하는 노드(보스 포함)의 깊이.
+  ///
+  /// §4.1의 “막당 노드 약 15개”는 맵 전체 노드 수가 아니라 경로 하나의
+  /// 방문 수로 해석한다. 같은 깊이의 후보는 여럿일 수 있지만 모든 경로는
+  /// 이 깊이를 정확히 한 번씩 지난다.
+  final int nodesPerAct;
+
+  /// §4.1의 목표 방문 수를 드러내는 하한.
   final int minNodesPerAct;
 
-  /// §4.1의 "막당 약 15개"를 검증하기 위한 상한.
+  /// §4.1의 목표 방문 수를 드러내는 상한.
   final int maxNodesPerAct;
 
-  /// 보스 이외 노드를 뽑는 가중치. 보스는 [nonBossNodesPerBoss] 주기로만 둔다.
+  /// 막의 중간 지점에서 모든 경로가 지나는 정예전의 깊이.
+  /// 0 기반 깊이 7은 보스를 포함한 15회 방문의 정중앙이다.
+  final int guaranteedEliteDepth;
+
+  /// 분기 깊이 하나에 encounter 수열로 뽑는 후보 노드 수의 하한.
+  final int minBranchWidth;
+
+  /// 분기 깊이 하나에 encounter 수열로 뽑는 후보 노드 수의 상한.
+  final int maxBranchWidth;
+
+  /// 분기를 시작하는 깊이. 시작 노드는 하나라 저장 로그의 첫 이동도 명확하다.
+  final int firstBranchDepth;
+
+  /// 분기를 끝내는 깊이. 다음 마지막 깊이의 단일 보스로 모든 경로가 합류한다.
+  final int lastBranchDepth;
+
+  /// 보스 이외 노드를 뽑는 가중치. 보스는 마지막 깊이에만 둔다.
   final List<RunNodeWeight> nodeTypeWeights;
 
-  /// 7개 일반 노드 + 보스의 두 주기라 총 16개다. §4.1의 약 15개 범위 안이다.
-  int get nodesPerAct => bossesPerAct * (nonBossNodesPerBoss + 1);
+  bool isBranchingDepth(int depth) =>
+      depth >= firstBranchDepth && depth <= lastBranchDepth;
 
   int get totalNodeWeight =>
       nodeTypeWeights.fold(0, (sum, entry) => sum + entry.weight);
