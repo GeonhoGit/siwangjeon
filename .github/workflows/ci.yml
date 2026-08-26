@@ -10,6 +10,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Actions가 조용히 안 돌 때 손으로 한 번 돌려 원인을 가른다.
+  workflow_dispatch:
 
 jobs:
   verify:
