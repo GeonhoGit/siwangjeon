@@ -69,7 +69,7 @@ CombatResult beginCombat({
     maxHp: maxHp,
     energy: tuning.energyPerTurn,
     block: 0,
-    karma: karma,
+    karma: karma.clamp(0, tuning.maxKarma),
     hand: const [],
     drawPile: drawPile,
     discardPile: const [],
@@ -307,11 +307,7 @@ class _Sim {
     // 먼저 붙이면 「원한의 칼날」처럼 업에 비례하는 카드가 자기가 만든 업으로
     // 자기 피해를 키운다. 그런 자기 참조는 §3.3의 "지금 밀어붙이고 나중에
     // 값을 치른다"는 거래 구조를 흐린다. 업은 결과지 재료가 아니다.
-    if (card.karma != 0) {
-      final before = karma;
-      karma = (karma + card.karma).clamp(0, tuning.maxKarma);
-      if (karma != before) events.add(KarmaGained(karma - before));
-    }
+    if (card.karma != 0) _changeKarma(card.karma);
 
     // 힘(power) 카드는 버림더미로 가지 않고 전투 내내 남는다(§3.5).
     // M0 카드 3장에는 없으므로 분기를 만들지 않는다.
@@ -451,6 +447,20 @@ class _Sim {
           BlockGained(targetIndex: CombatState.playerIndex, amount: gained),
         );
 
+      case ChangeKarmaEffect():
+        _changeKarma(effect.amount);
+
+      case DrawCardsEffect():
+        // 턴 시작 드로우와 반드시 같은 경로를 쓴다. 여기서만 전투 RNG를
+        // 다음 상태로 넘기므로, 카드 드로우도 §7.4의 재생성을 지킨다.
+        draw(effect.count);
+
+      case GainEnergyEffect():
+        energy += effect.amount;
+
+      case LoseHpEffect():
+        _loseHp(effect.amount);
+
       case ApplyStatusEffect():
         if (effect.target == EffectTarget.self) {
           _addStatusToPlayer(effect.status, effect.stacks);
@@ -525,6 +535,31 @@ class _Sim {
     );
 
     _checkOutcome();
+  }
+
+  /// 방어도를 피해 가는 체력 대가. 정화의 비용은 공격 피해가 아니다.
+  void _loseHp(int amount) {
+    if (amount <= 0) return;
+
+    final lost = amount < hp ? amount : hp;
+    hp -= lost;
+    events.add(
+      DamageDealt(
+        targetIndex: CombatState.playerIndex,
+        amount: lost,
+        blocked: 0,
+      ),
+    );
+    _checkOutcome();
+  }
+
+  void _changeKarma(int amount) {
+    if (amount == 0) return;
+
+    final before = karma;
+    karma = (karma + amount).clamp(0, tuning.maxKarma);
+    final changed = karma - before;
+    if (changed != 0) events.add(KarmaGained(changed));
   }
 
   // ── 상태 효과 ──────────────────────────────────────────

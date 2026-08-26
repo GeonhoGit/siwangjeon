@@ -52,3 +52,38 @@ final class BlockEffect extends CardEffect {
 
   final int value;
 }
+
+/// 업(業)을 즉시 증감한다. 음수는 §3.3의 정화에 쓴다.
+///
+/// [CardDef.karma]는 강한 카드가 효과 해결 뒤에 내는 고정 업 비용이고,
+/// 이 효과는 카드 해결 순서 안에서 의도적으로 업을 바꾸는 결과다. 두 방식을
+/// 한 카드에 함께 써서 서로 상쇄하지 않는다.
+final class ChangeKarmaEffect extends CardEffect {
+  const ChangeKarmaEffect(this.amount);
+
+  final int amount;
+}
+
+/// 덱에서 카드를 뽑는다. 덱 소진과 재셔플은 전투의 공통 드로우 규칙을 따른다.
+final class DrawCardsEffect extends CardEffect {
+  const DrawCardsEffect(this.count) : assert(count >= 0);
+
+  final int count;
+}
+
+/// 기력(氣)을 즉시 회복한다. 턴당 기본 기력보다 더 낼 수 있게 할 수 있다.
+final class GainEnergyEffect extends CardEffect {
+  const GainEnergyEffect(this.amount) : assert(amount >= 0);
+
+  final int amount;
+}
+
+/// 정화 같은 카드가 내는 고정 체력 대가다.
+///
+/// 공격 피해와 달리 방어도·기세·약화·취약을 거치지 않고 체력만 정확히 잃는다.
+/// 따라서 [EffectTarget]을 붙여 [DamageEffect]와 공유하면 안 된다.
+final class LoseHpEffect extends CardEffect {
+  const LoseHpEffect(this.amount) : assert(amount >= 0);
+
+  final int amount;
+}

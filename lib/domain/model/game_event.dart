@@ -58,6 +58,7 @@ final class StatusApplied extends GameEvent {
 final class KarmaGained extends GameEvent {
   const KarmaGained(this.amount);
 
+  /// 실제로 변한 업의 부호 있는 값. 음수면 정화로 업이 줄었다는 뜻이다.
   final int amount;
 }
 
