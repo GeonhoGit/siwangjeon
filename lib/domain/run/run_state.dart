@@ -7,6 +7,10 @@ library;
 
 import '../model/combat_action.dart';
 
+// RngStream은 rng/rng.dart로 옮겼다. 스트림 구분은 난수기의 일부이고,
+// 런 상태가 아니라 난수 구현과 함께 읽혀야 이해된다.
+export '../rng/rng.dart' show RngStream;
+
 class RunState {
   const RunState({
     required this.seed,
@@ -21,19 +25,4 @@ class RunState {
 
   /// 지금까지의 모든 액션. 이것을 재생하면 현재 상태가 나온다.
   final List<CombatAction> actionLog;
-}
-
-/// 난수 스트림 구분 (§7.4).
-///
-/// 하나의 스트림을 공유하면 보상 롤 한 번이 어긋났을 때 이후 전투까지 전부
-/// 밀린다. 용도별로 분리해 두면 그런 연쇄가 생기지 않는다.
-enum RngStream {
-  /// 카드·유물 보상 롤.
-  reward,
-
-  /// 노드 맵 생성과 적 배치.
-  encounter,
-
-  /// 전투 내부 (드로우, 적 행동 선택).
-  combat,
 }

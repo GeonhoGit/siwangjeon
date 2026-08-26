@@ -15,9 +15,15 @@
 /// 난수가 필요하면 [CombatState]가 들고 있는 명시적 RNG 스트림에서 뽑는다 (§7.4).
 library;
 
+import '../effect/card_effect.dart';
+import '../model/card.dart';
 import '../model/combat_action.dart';
 import '../model/combat_state.dart';
+import '../model/enemy.dart';
 import '../model/game_event.dart';
+import '../model/status.dart';
+import '../rng/rng.dart';
+import 'tuning.dart';
 
 /// 엔진 1회 적용의 결과.
 class CombatResult {
@@ -27,8 +33,553 @@ class CombatResult {
   final List<GameEvent> events;
 }
 
+/// 규칙상 불가능한 액션이 들어왔다.
+///
+/// 이것은 플레이어의 실수가 아니라 **호출자의 버그**다. UI는 [legalActions]가
+/// 돌려준 것만 보여야 하고, 액션 로그에는 합법적인 액션만 쌓여야 한다.
+/// 불법 액션이 로그에 섞이면 §7.4의 재생 복구가 그 지점에서 무너진다.
+/// 그래서 조용히 무시하지 않고 던진다.
+class IllegalActionError extends Error {
+  IllegalActionError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'IllegalActionError: $message';
+}
+
+/// 전투를 시작한다.
+///
+/// [karma]를 받는 이유는 업이 전투가 아니라 **런** 단위 자원이기 때문이다(§3.2).
+/// 이전 전투에서 쌓은 업을 그대로 들고 들어온다.
+CombatResult beginCombat({
+  required int seed,
+  required int hp,
+  required int maxHp,
+  required List<CardDef> deck,
+  required List<Enemy> enemies,
+  int karma = 0,
+  CombatTuning tuning = CombatTuning.m0,
+}) {
+  final (drawPile, rng) = Rng.forStream(seed, RngStream.combat).shuffled(deck);
+
+  final start = CombatState(
+    turn: 1,
+    hp: hp,
+    maxHp: maxHp,
+    energy: tuning.energyPerTurn,
+    block: 0,
+    karma: karma,
+    hand: const [],
+    drawPile: drawPile,
+    discardPile: const [],
+    enemies: enemies,
+    rng: rng,
+  );
+
+  final sim = _Sim(start, tuning);
+  sim.events.add(TurnStarted(sim.turn));
+  sim.draw(tuning.handSize - sim.hand.length);
+
+  return sim.finish();
+}
+
 /// 액션 하나를 적용해 다음 상태와 그 과정에서 일어난 이벤트를 돌려준다.
-CombatResult applyAction(CombatState state, CombatAction action) {
-  // M0에서 구현한다. 지금은 계약만 고정해 둔다.
-  throw UnimplementedError('전투 엔진은 M0에서 구현한다 (기획서 §8)');
+CombatResult applyAction(
+  CombatState state,
+  CombatAction action, {
+  CombatTuning tuning = CombatTuning.m0,
+}) {
+  if (state.isOver) {
+    throw IllegalActionError('이미 끝난 전투에 액션을 적용할 수 없다');
+  }
+
+  final sim = _Sim(state, tuning);
+
+  switch (action) {
+    case PlayCard():
+      sim.playCard(action);
+    case EndTurn():
+      sim.endTurn();
+  }
+
+  return sim.finish();
+}
+
+/// 지금 상태에서 규칙상 가능한 모든 액션.
+///
+/// UI의 버튼 활성화와 §8.2 시뮬레이터의 수 선택이 같은 함수를 쓰게 하려는 것이다.
+/// 두 곳이 각자 판단하면 반드시 어긋나고, 그때 시뮬레이터가 낸 밸런스 수치는
+/// 실제 플레이와 다른 게임의 것이 된다.
+List<CombatAction> legalActions(CombatState state) {
+  if (state.isOver) return const [];
+
+  final actions = <CombatAction>[const EndTurn()];
+
+  for (var i = 0; i < state.hand.length; i++) {
+    final card = state.hand[i];
+    if (card.cost > state.energy) continue;
+
+    if (card.targeted) {
+      for (var t = 0; t < state.enemies.length; t++) {
+        if (state.enemies[t].isAlive) {
+          actions.add(PlayCard(handIndex: i, targetIndex: t));
+        }
+      }
+    } else {
+      actions.add(PlayCard(handIndex: i));
+    }
+  }
+
+  return actions;
+}
+
+/// 엔진 내부의 가변 작업대.
+///
+/// 불변 상태를 한 단계씩 `copyWith`로 넘기면 전투 한 턴에 수십 개의 중간
+/// 인스턴스가 생기고, 코드가 규칙이 아니라 상태 배관으로 뒤덮인다.
+/// 대신 여기서만 가변으로 굴리고 [finish]에서 다시 불변으로 봉한다.
+/// 이 클래스는 파일 밖으로 나가지 않으므로 순수 함수 계약은 그대로다.
+class _Sim {
+  _Sim(CombatState s, this.tuning)
+    : turn = s.turn,
+      hp = s.hp,
+      maxHp = s.maxHp,
+      energy = s.energy,
+      block = s.block,
+      karma = s.karma,
+      hand = List.of(s.hand),
+      drawPile = List.of(s.drawPile),
+      discardPile = List.of(s.discardPile),
+      enemies = List.of(s.enemies),
+      statuses = Map.of(s.statuses),
+      rng = s.rng,
+      outcome = s.outcome;
+
+  final CombatTuning tuning;
+  final List<GameEvent> events = [];
+
+  int turn;
+  int hp;
+  int maxHp;
+  int energy;
+  int block;
+  int karma;
+  List<CardDef> hand;
+  List<CardDef> drawPile;
+  List<CardDef> discardPile;
+  List<Enemy> enemies;
+  Map<StatusId, int> statuses;
+  Rng rng;
+  CombatOutcome? outcome;
+
+  CombatResult finish() {
+    return CombatResult(
+      CombatState(
+        turn: turn,
+        hp: hp,
+        maxHp: maxHp,
+        energy: energy,
+        block: block,
+        karma: karma,
+        hand: List.unmodifiable(hand),
+        drawPile: List.unmodifiable(drawPile),
+        discardPile: List.unmodifiable(discardPile),
+        enemies: List.unmodifiable(enemies),
+        statuses: Map.unmodifiable(statuses),
+        rng: rng,
+        outcome: outcome,
+      ),
+      List.unmodifiable(events),
+    );
+  }
+
+  // ── 액션 ──────────────────────────────────────────────
+
+  void playCard(PlayCard action) {
+    if (action.handIndex < 0 || action.handIndex >= hand.length) {
+      throw IllegalActionError('손패 ${hand.length}장에 ${action.handIndex}번은 없다');
+    }
+
+    final card = hand[action.handIndex];
+
+    if (card.cost > energy) {
+      throw IllegalActionError(
+        '${card.name}은 기력 ${card.cost}이 필요하나 $energy뿐이다',
+      );
+    }
+
+    int? target;
+    if (card.targeted) {
+      target = action.targetIndex;
+      if (target == null || target < 0 || target >= enemies.length) {
+        throw IllegalActionError('${card.name}은 대상이 필요하다');
+      }
+      if (!enemies[target].isAlive) {
+        throw IllegalActionError('${card.name}의 대상 $target번은 이미 쓰러졌다');
+      }
+    }
+
+    hand.removeAt(action.handIndex);
+    energy -= card.cost;
+    events.add(CardPlayed(card));
+
+    for (final effect in card.effects) {
+      _applyEffect(effect, target);
+    }
+
+    // 업은 효과가 해결된 **뒤에** 붙는다.
+    //
+    // 먼저 붙이면 「원한의 칼날」처럼 업에 비례하는 카드가 자기가 만든 업으로
+    // 자기 피해를 키운다. 그런 자기 참조는 §3.3의 "지금 밀어붙이고 나중에
+    // 값을 치른다"는 거래 구조를 흐린다. 업은 결과지 재료가 아니다.
+    if (card.karma != 0) {
+      final before = karma;
+      karma = (karma + card.karma).clamp(0, tuning.maxKarma);
+      if (karma != before) events.add(KarmaGained(karma - before));
+    }
+
+    // 힘(power) 카드는 버림더미로 가지 않고 전투 내내 남는다(§3.5).
+    // M0 카드 3장에는 없으므로 분기를 만들지 않는다.
+    discardPile.add(card);
+
+    _checkOutcome();
+  }
+
+  void endTurn() {
+    events.add(TurnEnded(turn));
+
+    _tickGrudge();
+    if (outcome != null) return;
+
+    // §3.1 — 남은 손패 버림.
+    discardPile.addAll(hand);
+    hand = [];
+
+    _decayPlayerStatuses();
+
+    _enemyTurn();
+    if (outcome != null) return;
+
+    _startPlayerTurn();
+  }
+
+  // ── 턴 진행 ────────────────────────────────────────────
+
+  /// 원한(怨恨) — 업에 비례한 피해가 플레이어 턴 끝에 터진다 (§3.4).
+  ///
+  /// 이 상태만 전투 안에서 업을 페널티가 아니라 **무기**로 쓴다.
+  /// §3.3이 업의 대가를 심판까지 미뤄 두었기 때문에, 업을 쌓는 선택이
+  /// 전투 중에는 순수한 이득으로만 보이는 문제가 있다.
+  /// 원한은 그 이득을 전투 안에서 한 번 체감하게 만드는 장치다.
+  void _tickGrudge() {
+    final perTick = tuning.karmaPerGrudgeTick;
+    final scale = (karma + perTick - 1) ~/ perTick;
+    if (scale <= 0) return;
+
+    for (var i = 0; i < enemies.length; i++) {
+      if (!enemies[i].isAlive) continue;
+      final stacks = enemies[i].statuses[StatusId.grudge] ?? 0;
+      if (stacks <= 0) continue;
+
+      _damageEnemy(i, stacks * scale, mitigate: false);
+    }
+
+    _checkOutcome();
+  }
+
+  void _enemyTurn() {
+    for (var i = 0; i < enemies.length; i++) {
+      if (!enemies[i].isAlive) continue;
+
+      // 적 턴 시작 — 중독이 먼저 돈다.
+      _tickEnemyPoison(i);
+      if (outcome != null) return;
+      if (!enemies[i].isAlive) continue;
+
+      // 적의 방어도도 자기 턴이 시작될 때 사라진다.
+      enemies[i] = enemies[i].copyWith(block: 0);
+
+      _executeMove(i, enemies[i].intent);
+      if (outcome != null) return;
+
+      enemies[i] = enemies[i].copyWith(
+        patternIndex: enemies[i].patternIndex + 1,
+      );
+      _decayEnemyStatuses(i);
+    }
+  }
+
+  void _executeMove(int index, EnemyMove move) {
+    switch (move) {
+      case EnemyAttack():
+        for (var n = 0; n < move.times; n++) {
+          if (outcome != null) return;
+          _damagePlayer(move.damage, attacker: enemies[index].statuses);
+        }
+
+      case EnemyDefend():
+        enemies[index] = enemies[index].copyWith(
+          block: enemies[index].block + move.block,
+        );
+        events.add(BlockGained(targetIndex: index, amount: move.block));
+
+      case EnemyInflict():
+        // 적 입장의 `enemy`는 플레이어를 가리킨다.
+        if (move.target == EffectTarget.enemy) {
+          _addStatusToPlayer(move.status, move.stacks);
+        } else {
+          _addStatusToEnemy(index, move.status, move.stacks);
+        }
+    }
+  }
+
+  void _startPlayerTurn() {
+    turn++;
+    events.add(TurnStarted(turn));
+
+    // 방어도(魄)는 여기서 사라진다.
+    //
+    // §3.1의 의사코드는 "턴 종료: 남은 손패 버림, 방어도 소멸"을 적 턴보다
+    // 위에 적어 두었지만, 그대로 구현하면 적이 때리기 전에 방어도가 없어져
+    // 「수비」 같은 방어 카드가 아무것도 하지 않는다. 방어 카드가 존재하는 한
+    // 그 순서가 의도일 수 없으므로, "그 턴에 쌓은 방어도가 적 턴을 막아 내고
+    // 다음 내 턴이 열릴 때 사라진다"로 읽었다.
+    //
+    // 적의 방어도도 같은 규칙이다 — 각자 자기 턴이 시작될 때 사라진다.
+    block = 0;
+
+    energy = tuning.energyPerTurn;
+
+    _tickPlayerPoison();
+    if (outcome != null) return;
+
+    draw(tuning.handSize - hand.length);
+  }
+
+  // ── 효과 인터프리터 ──────────────────────────────────────
+
+  void _applyEffect(CardEffect effect, int? target) {
+    switch (effect) {
+      case DamageEffect():
+        var value = effect.value.toDouble();
+        if (effect.scaleWith == 'karma') {
+          value += karma * effect.scale;
+        }
+        if (target != null) {
+          _damageEnemy(target, value.floor());
+        }
+
+      case BlockEffect():
+        final gained = effect.value + (statuses[StatusId.dexterity] ?? 0);
+        block += gained;
+        events.add(
+          BlockGained(targetIndex: CombatState.playerIndex, amount: gained),
+        );
+
+      case ApplyStatusEffect():
+        if (effect.target == EffectTarget.self) {
+          _addStatusToPlayer(effect.status, effect.stacks);
+        } else if (target != null) {
+          _addStatusToEnemy(target, effect.status, effect.stacks);
+        }
+    }
+  }
+
+  // ── 피해 ──────────────────────────────────────────────
+
+  /// 기세·약화·취약을 반영한 최종 피해량.
+  int _attackDamage(
+    int base,
+    Map<StatusId, int> attacker,
+    Map<StatusId, int> defender,
+  ) {
+    var value = (base + (attacker[StatusId.strength] ?? 0)).toDouble();
+
+    if ((attacker[StatusId.weak] ?? 0) > 0) {
+      value = (value * tuning.weakMultiplier).floorToDouble();
+    }
+    if ((defender[StatusId.vulnerable] ?? 0) > 0) {
+      value = (value * tuning.vulnerableMultiplier).floorToDouble();
+    }
+
+    final result = value.floor();
+    return result < 0 ? 0 : result;
+  }
+
+  void _damageEnemy(int index, int base, {bool mitigate = true}) {
+    final enemy = enemies[index];
+    if (!enemy.isAlive) return;
+
+    final amount = mitigate
+        ? _attackDamage(base, statuses, enemy.statuses)
+        : base;
+
+    final blocked = amount < enemy.block ? amount : enemy.block;
+    final through = amount - blocked;
+
+    enemies[index] = enemy.copyWith(
+      block: enemy.block - blocked,
+      hp: enemy.hp - through < 0 ? 0 : enemy.hp - through,
+    );
+
+    events.add(
+      DamageDealt(targetIndex: index, amount: through, blocked: blocked),
+    );
+
+    if (!enemies[index].isAlive) events.add(EnemyDied(index));
+  }
+
+  void _damagePlayer(int base, {Map<StatusId, int>? attacker}) {
+    final amount = attacker == null
+        ? base
+        : _attackDamage(base, attacker, statuses);
+
+    final blocked = amount < block ? amount : block;
+    final through = amount - blocked;
+
+    block -= blocked;
+    hp -= through;
+    if (hp < 0) hp = 0;
+
+    events.add(
+      DamageDealt(
+        targetIndex: CombatState.playerIndex,
+        amount: through,
+        blocked: blocked,
+      ),
+    );
+
+    _checkOutcome();
+  }
+
+  // ── 상태 효과 ──────────────────────────────────────────
+
+  void _addStatusToPlayer(StatusId id, int stacks) {
+    if (stacks == 0) return;
+    statuses = _bump(statuses, id, stacks);
+    events.add(
+      StatusApplied(
+        targetIndex: CombatState.playerIndex,
+        status: id,
+        stacks: stacks,
+      ),
+    );
+  }
+
+  void _addStatusToEnemy(int index, StatusId id, int stacks) {
+    if (stacks == 0 || !enemies[index].isAlive) return;
+    enemies[index] = enemies[index].copyWith(
+      statuses: _bump(enemies[index].statuses, id, stacks),
+    );
+    events.add(StatusApplied(targetIndex: index, status: id, stacks: stacks));
+  }
+
+  static Map<StatusId, int> _bump(
+    Map<StatusId, int> source,
+    StatusId id,
+    int delta,
+  ) {
+    final next = Map<StatusId, int>.of(source);
+    final value = (next[id] ?? 0) + delta;
+    if (value <= 0) {
+      next.remove(id);
+    } else {
+      next[id] = value;
+    }
+    return next;
+  }
+
+  /// 턴마다 1씩 빠지는 상태들. 기세·굳음처럼 지속되는 것은 건드리지 않는다.
+  static const _decaying = [StatusId.vulnerable, StatusId.weak];
+
+  void _decayPlayerStatuses() {
+    var next = statuses;
+    for (final id in _decaying) {
+      if ((next[id] ?? 0) > 0) next = _bump(next, id, -1);
+    }
+    statuses = next;
+  }
+
+  void _decayEnemyStatuses(int index) {
+    var next = enemies[index].statuses;
+    for (final id in _decaying) {
+      if ((next[id] ?? 0) > 0) next = _bump(next, id, -1);
+    }
+    enemies[index] = enemies[index].copyWith(statuses: next);
+  }
+
+  void _tickEnemyPoison(int index) {
+    final stacks = enemies[index].statuses[StatusId.poison] ?? 0;
+    if (stacks <= 0) return;
+
+    // 중독은 방어도를 무시한다.
+    _damageEnemy(index, stacks, mitigate: false);
+    enemies[index] = enemies[index].copyWith(
+      statuses: _bump(enemies[index].statuses, StatusId.poison, -1),
+    );
+    _checkOutcome();
+  }
+
+  void _tickPlayerPoison() {
+    final stacks = statuses[StatusId.poison] ?? 0;
+    if (stacks <= 0) return;
+
+    hp -= stacks;
+    if (hp < 0) hp = 0;
+    events.add(
+      DamageDealt(
+        targetIndex: CombatState.playerIndex,
+        amount: stacks,
+        blocked: 0,
+      ),
+    );
+
+    statuses = _bump(statuses, StatusId.poison, -1);
+    _checkOutcome();
+  }
+
+  // ── 덱 ────────────────────────────────────────────────
+
+  void draw(int count) {
+    if (count <= 0) return;
+
+    final drawn = <CardDef>[];
+
+    for (var i = 0; i < count; i++) {
+      if (drawPile.isEmpty) {
+        // 덱이 비면 버림더미를 섞어 되돌린다. 양쪽 다 비었으면 더 못 뽑는다.
+        if (discardPile.isEmpty) break;
+
+        final (shuffled, next) = rng.shuffled(discardPile);
+        rng = next;
+        events.add(DeckReshuffled(discardPile.length));
+        drawPile = shuffled;
+        discardPile = [];
+      }
+
+      drawn.add(drawPile.removeAt(0));
+    }
+
+    if (drawn.isEmpty) return;
+    hand.addAll(drawn);
+    events.add(CardsDrawn(List.unmodifiable(drawn)));
+  }
+
+  // ── 종료 판정 ──────────────────────────────────────────
+
+  void _checkOutcome() {
+    if (outcome != null) return;
+
+    if (hp <= 0) {
+      outcome = CombatOutcome.defeat;
+      events.add(const CombatEnded(CombatOutcome.defeat));
+      return;
+    }
+
+    if (!enemies.any((e) => e.isAlive)) {
+      outcome = CombatOutcome.victory;
+      events.add(const CombatEnded(CombatOutcome.victory));
+    }
+  }
 }

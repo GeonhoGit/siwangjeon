@@ -2,8 +2,15 @@
 ///
 /// 카드는 코드가 아니라 `assets/data/cards.json`으로 정의된다.
 /// 이 sealed 계층은 그 JSON의 `effects` 배열을 해석한 결과물이며,
-/// 인터프리터가 [CardEffect]를 받아 전투 상태에 적용한다.
+/// 인터프리터([applyAction] 안의 효과 처리부)가 [CardEffect]를 받아
+/// 전투 상태에 적용한다.
+///
+/// sealed로 두는 이유는 switch가 빠짐없이 다뤄졌는지를 컴파일러가
+/// 검사하게 하기 위해서다. 효과를 하나 추가하면 인터프리터가
+/// 컴파일 에러로 알려 준다.
 library;
+
+import '../model/status.dart';
 
 sealed class CardEffect {
   const CardEffect();
@@ -28,10 +35,15 @@ final class DamageEffect extends CardEffect {
 
 /// `{"op": "applyStatus", "status": "grudge", "stacks": 1}`
 final class ApplyStatusEffect extends CardEffect {
-  const ApplyStatusEffect({required this.status, required this.stacks});
+  const ApplyStatusEffect({
+    required this.status,
+    required this.stacks,
+    this.target = EffectTarget.enemy,
+  });
 
-  final String status;
+  final StatusId status;
   final int stacks;
+  final EffectTarget target;
 }
 
 /// 방어(魄)를 부여한다. 턴 종료 시 소멸한다 (§3.2).

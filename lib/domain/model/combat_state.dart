@@ -4,10 +4,18 @@
 /// 이 규칙은 `test/architecture_test.dart`가 강제한다 (기획서 §7.2).
 library;
 
+import '../rng/rng.dart';
+import 'card.dart';
+import 'enemy.dart';
+import 'status.dart';
+
+/// 전투가 끝난 방식.
+enum CombatOutcome { victory, defeat }
+
 /// 한 전투의 전체 상태. **불변**이며, 엔진은 변경 대신 새 인스턴스를 반환한다.
 ///
-/// 골격 단계라 필드는 §3.2의 자원만 담고 있다.
-/// 손패·덱·버림더미·적 목록은 M0 전투 엔진 구현 시 추가한다.
+/// 리스트 필드는 관례상 읽기 전용으로 다룬다. 엔진은 항상 새 리스트를
+/// 만들어 넣으므로 밖에서 수정할 일이 없다.
 class CombatState {
   const CombatState({
     required this.turn,
@@ -16,7 +24,20 @@ class CombatState {
     required this.energy,
     required this.block,
     required this.karma,
+    required this.hand,
+    required this.drawPile,
+    required this.discardPile,
+    required this.enemies,
+    required this.rng,
+    this.statuses = const {},
+    this.outcome,
   });
+
+  /// 이벤트에서 플레이어를 가리키는 대상 인덱스.
+  ///
+  /// 적은 0부터 세므로 음수 하나를 비워 두면 대상 표현이 int 하나로 끝난다.
+  /// 이벤트는 UI가 재생만 하는 값이고(§7.2), 단순할수록 좋다.
+  static const int playerIndex = -1;
 
   /// 현재 턴. 1부터 센다.
   final int turn;
@@ -35,6 +56,28 @@ class CombatState {
   /// 심판(보스전) 시작 시에만 청구된다 (§3.3).
   final int karma;
 
+  final List<CardDef> hand;
+  final List<CardDef> drawPile;
+  final List<CardDef> discardPile;
+
+  final List<Enemy> enemies;
+
+  /// 플레이어에게 걸린 상태 효과. 스택이 0이 되면 항목 자체를 지운다.
+  final Map<StatusId, int> statuses;
+
+  /// 전투 내부용 난수기 (§7.4의 [RngStream.combat]).
+  final Rng rng;
+
+  /// 전투가 끝났으면 그 결과. 진행 중이면 null.
+  final CombatOutcome? outcome;
+
+  bool get isOver => outcome != null;
+
+  Iterable<Enemy> get livingEnemies => enemies.where((e) => e.isAlive);
+
+  /// 현재 업이 속한 심판 등급 (§3.3).
+  KarmaBand get karmaBand => KarmaBand.of(karma);
+
   CombatState copyWith({
     int? turn,
     int? hp,
@@ -42,6 +85,13 @@ class CombatState {
     int? energy,
     int? block,
     int? karma,
+    List<CardDef>? hand,
+    List<CardDef>? drawPile,
+    List<CardDef>? discardPile,
+    List<Enemy>? enemies,
+    Map<StatusId, int>? statuses,
+    Rng? rng,
+    CombatOutcome? outcome,
   }) {
     return CombatState(
       turn: turn ?? this.turn,
@@ -50,6 +100,13 @@ class CombatState {
       energy: energy ?? this.energy,
       block: block ?? this.block,
       karma: karma ?? this.karma,
+      hand: hand ?? this.hand,
+      drawPile: drawPile ?? this.drawPile,
+      discardPile: discardPile ?? this.discardPile,
+      enemies: enemies ?? this.enemies,
+      statuses: statuses ?? this.statuses,
+      rng: rng ?? this.rng,
+      outcome: outcome ?? this.outcome,
     );
   }
 }
