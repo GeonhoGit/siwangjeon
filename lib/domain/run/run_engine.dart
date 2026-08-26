@@ -82,7 +82,7 @@ class RunProgress {
   final List<CardDef> deck;
 
   /// 재생 가능한 카드 인스턴스 목록. 같은 카드 id가 여러 장 있어도 각각의
-  /// [RunDeckCard.instanceId]가 시작 슬롯·보상 노드·상점 상품에 고정된다.
+  /// [RunDeckCard.instanceId]가 시작 슬롯·보상 노드·상점 상품·사건 선택에 고정된다.
   final List<RunDeckCard> deckCards;
 
   /// 현재 전투 중이거나 패배로 끝난 전투 상태. 승리한 전투는 결과를 런 값으로
@@ -218,9 +218,11 @@ List<RunAction> legalRunActions(
 
   final pendingEvent = progress.pendingEvent;
   if (pendingEvent != null) {
+    final karmaBand = tuning.karmaBandFor(progress.karma);
     return [
       for (final choice in pendingEvent.event.choices)
-        if (_canApplyEventDelta(progress, tuning.eventDeltaFor(choice.effect)))
+        if (choice.isAvailableIn(karmaBand) &&
+            _canApplyEventDelta(progress, tuning.eventDeltaFor(choice.effect)))
           ChooseEventOption(nodeId: pendingEvent.nodeId, choiceId: choice.id),
     ];
   }
@@ -560,6 +562,11 @@ RunProgress replayRun(
           money: money,
           deckCards: deckCards,
         );
+        if (!selectedChoice.isAvailableIn(
+          tuning.karmaBandFor(progress.karma),
+        )) {
+          throw IllegalRunActionError('현재 업 구간에는 없는 사건 선택지다');
+        }
         if (!_canApplyEventDelta(progress, delta)) {
           throw IllegalRunActionError('사건 선택의 대가를 낼 수 없다');
         }
@@ -568,6 +575,20 @@ RunProgress replayRun(
         // 같은 상한을 적용해, 다음 전투에 들어갈 때만 값이 조용히 바뀌지 않게 한다.
         karma = (karma + delta.karma).clamp(0, CombatTuning.m0.maxKarma);
         money += delta.money;
+        final gainedCardId = selectedChoice.gainedCardId;
+        if (gainedCardId != null) {
+          final card = _eventCardFor(content, gainedCardId);
+          deckCards.add(
+            RunDeckCard(
+              instanceId: _eventCardInstanceId(
+                nodeId,
+                selectedChoice.id,
+                card.id,
+              ),
+              card: card,
+            ),
+          );
+        }
         pendingEvent = null;
     }
   }
@@ -910,6 +931,19 @@ String _rewardCardInstanceId(int nodeId, String cardId) =>
     'reward:$nodeId:$cardId';
 
 String _shopCardInstanceId(int nodeId, String cardId) => 'shop:$nodeId:$cardId';
+
+String _eventCardInstanceId(int nodeId, String choiceId, String cardId) =>
+    'event:$nodeId:$choiceId:$cardId';
+
+CardDef _eventCardFor(RunContent? content, String cardId) {
+  if (content == null) {
+    throw StateError('사건 카드 보상에는 런 콘텐츠가 필요하다');
+  }
+  for (final card in content.cardRewardPool) {
+    if (card.id == cardId) return card;
+  }
+  throw IllegalRunActionError('사건이 카드 보상 풀에 없는 카드 $cardId를 가리킨다');
+}
 
 bool _canApplyEventDelta(RunProgress progress, RunEventDelta delta) {
   // 체력 비용으로 사건에서 죽는 선택지는 내지 않는다. 회복은 최대 체력에서

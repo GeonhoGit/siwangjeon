@@ -48,6 +48,9 @@ class RunTuning {
     this.wildCampRestHeal = 24,
     this.wildCampRepentKarmaCleanse = 3,
     this.wildCampRepentMoneyCost = 30,
+    this.cleanKarmaMax = 19,
+    this.ordinaryKarmaMax = 49,
+    this.turbidKarmaMax = 79,
   }) : assert(bossesPerAct == 1),
        assert(nodesPerAct > 1),
        assert(minNodesPerAct > 0),
@@ -78,7 +81,10 @@ class RunTuning {
        assert(shopRemoveCardPrice >= 0),
        assert(wildCampRestHeal > 0),
        assert(wildCampRepentKarmaCleanse > 0),
-       assert(wildCampRepentMoneyCost >= 0);
+       assert(wildCampRepentMoneyCost >= 0),
+       assert(cleanKarmaMax >= 0),
+       assert(ordinaryKarmaMax >= cleanKarmaMax),
+       assert(turbidKarmaMax >= ordinaryKarmaMax);
 
   /// 기획서 §2.1의 “7 노드마다 시왕 심판”과 §4.1의 “막당 약 15개”는
   /// 함께 만족할 수 없다. 사용자는 막당 마지막 시왕 1명과 방문 깊이 15개를
@@ -167,29 +173,45 @@ class RunTuning {
   final int wildCampRepentKarmaCleanse;
   final int wildCampRepentMoneyCost;
 
+  /// §3.3의 청정·평범·탁함·악업 경계. 사건 콘텐츠는 숫자를 직접 비교하지
+  /// 않고 [karmaBandFor]가 돌려주는 의미 구간만 사용한다.
+  final int cleanKarmaMax;
+  final int ordinaryKarmaMax;
+  final int turbidKarmaMax;
+
   /// 사건 결과의 모든 수치. data의 사건 정의는 [RunEventEffect]만 고르므로,
   /// 콘텐츠 문구를 고쳐도 밸런스 수치가 흩어지지 않는다.
   RunEventDelta eventDeltaFor(RunEventEffect effect) => switch (effect) {
-    RunEventEffect.acceptBribe => const RunEventDelta(karma: 2, money: 25),
-    RunEventEffect.returnBribe => const RunEventDelta(karma: -2, hp: -8),
-    RunEventEffect.consumeOffering => const RunEventDelta(hp: 16, karma: 2),
-    RunEventEffect.shareOffering => const RunEventDelta(hp: -8, karma: -2),
-    RunEventEffect.takeSmugglerCoin => const RunEventDelta(karma: 2, money: 30),
-    RunEventEffect.payFerryman => const RunEventDelta(karma: -2, money: -25),
-    RunEventEffect.falsifyLedger => const RunEventDelta(karma: 2, money: 25),
-    RunEventEffect.confessLedger => const RunEventDelta(karma: -2, hp: -10),
-    RunEventEffect.burnAncestralAshes => const RunEventDelta(hp: 12, karma: 2),
+    RunEventEffect.acceptBribe => const RunEventDelta(karma: 3, money: 30),
+    RunEventEffect.returnBribe => const RunEventDelta(),
+    RunEventEffect.consumeOffering => const RunEventDelta(hp: 18, karma: 2),
+    RunEventEffect.shareOffering => const RunEventDelta(),
+    RunEventEffect.takeSmugglerCoin => const RunEventDelta(karma: 3, money: 35),
+    RunEventEffect.payFerryman => const RunEventDelta(money: -20),
+    RunEventEffect.turnAwaySmuggler => const RunEventDelta(),
+    RunEventEffect.falsifyLedger => const RunEventDelta(karma: 3, money: 35),
+    RunEventEffect.confessLedger => const RunEventDelta(karma: -8, money: -20),
+    RunEventEffect.sealLedger => const RunEventDelta(),
+    RunEventEffect.burnAncestralAshes => const RunEventDelta(hp: 16),
     RunEventEffect.tendAncestralAshes => const RunEventDelta(
-      karma: -2,
-      money: -20,
+      karma: -4,
+      money: -15,
     ),
-    RunEventEffect.stealWidowCandle => const RunEventDelta(karma: 2, money: 30),
-    RunEventEffect.lightWidowCandle => const RunEventDelta(karma: -2, hp: -8),
-    RunEventEffect.drinkOblivion => const RunEventDelta(hp: 15, karma: 2),
-    RunEventEffect.refuseOblivion => const RunEventDelta(karma: -2, hp: -10),
-    RunEventEffect.takeWardenFavor => const RunEventDelta(karma: 2, money: 20),
-    RunEventEffect.endureWardenTrial => const RunEventDelta(karma: -2, hp: -12),
+    RunEventEffect.stealWidowCandle => const RunEventDelta(money: 20),
+    RunEventEffect.lightWidowCandle => const RunEventDelta(karma: -3, hp: -7),
+    RunEventEffect.drinkOblivion => const RunEventDelta(hp: 15, karma: 3),
+    RunEventEffect.refuseOblivion => const RunEventDelta(karma: -5),
+    RunEventEffect.sellOblivion => const RunEventDelta(money: 20),
+    RunEventEffect.takeWardenFavor => const RunEventDelta(karma: 5),
+    RunEventEffect.endureWardenTrial => const RunEventDelta(hp: -12),
   };
+
+  KarmaBand karmaBandFor(int karma) {
+    if (karma <= cleanKarmaMax) return KarmaBand.clean;
+    if (karma <= ordinaryKarmaMax) return KarmaBand.ordinary;
+    if (karma <= turbidKarmaMax) return KarmaBand.turbid;
+    return KarmaBand.evil;
+  }
 
   bool isBranchingDepth(int depth) =>
       depth >= firstBranchDepth && depth <= lastBranchDepth;
