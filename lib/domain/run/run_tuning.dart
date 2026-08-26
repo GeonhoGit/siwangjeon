@@ -35,6 +35,9 @@ class RunTuning {
       RunNodeWeight(RunNodeType.wildCamp, 15),
       RunNodeWeight(RunNodeType.event, 10),
     ],
+    this.combatEncounterSize = 3,
+    this.eliteEncounterSize = 3,
+    this.bossEncounterSize = 3,
   }) : assert(bossesPerAct == 1),
        assert(nodesPerAct > 1),
        assert(minNodesPerAct > 0),
@@ -53,7 +56,10 @@ class RunTuning {
        assert(lastBranchWidth <= maxAdjacentSlotDistance + 1),
        assert(firstBranchDepth > 0),
        assert(lastBranchDepth >= firstBranchDepth),
-       assert(lastBranchDepth < nodesPerAct - 1);
+       assert(lastBranchDepth < nodesPerAct - 1),
+       assert(combatEncounterSize > 0),
+       assert(eliteEncounterSize > 0),
+       assert(bossEncounterSize > 0);
 
   /// 기획서 §2.1의 “7 노드마다 시왕 심판”과 §4.1의 “막당 약 15개”는
   /// 함께 만족할 수 없다. 사용자는 막당 마지막 시왕 1명과 방문 깊이 15개를
@@ -103,11 +109,32 @@ class RunTuning {
   /// 보스 이외 노드를 뽑는 가중치. 보스는 마지막 깊이에만 둔다.
   final List<RunNodeWeight> nodeTypeWeights;
 
+  /// 일반 전투에 배치할 적 수. 적 원형과 수치는 콘텐츠에, 구성 규칙은 런
+  /// 튜닝에 둔다.
+  final int combatEncounterSize;
+
+  /// 전용 정예 적이 생기기 전의 임시 구성 수. M1에서는 M0 적 풀을 재사용하며,
+  /// 전용 적을 도입할 다음 단계에서 이 자리가 정예 구성을 가리킨다.
+  final int eliteEncounterSize;
+
+  /// 전용 보스 적이 생기기 전의 임시 구성 수. M1에서는 M0 적 풀을 재사용하며,
+  /// 전용 보스를 도입할 다음 단계에서 이 자리가 보스 구성을 가리킨다.
+  final int bossEncounterSize;
+
   bool isBranchingDepth(int depth) =>
       depth >= firstBranchDepth && depth <= lastBranchDepth;
 
   int get totalNodeWeight =>
       nodeTypeWeights.fold(0, (sum, entry) => sum + entry.weight);
+
+  int encounterSizeFor(RunNodeType type) => switch (type) {
+    RunNodeType.combat => combatEncounterSize,
+    RunNodeType.elite => eliteEncounterSize,
+    RunNodeType.boss => bossEncounterSize,
+    RunNodeType.shop ||
+    RunNodeType.wildCamp ||
+    RunNodeType.event => throw ArgumentError.value(type, 'type', '전투 노드가 아니다'),
+  };
 
   static const RunTuning m1 = RunTuning();
 }

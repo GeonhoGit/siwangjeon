@@ -14,6 +14,7 @@ import '../domain/effect/card_effect.dart';
 import '../domain/model/card.dart';
 import '../domain/model/enemy.dart';
 import '../domain/model/status.dart';
+import '../domain/run/run_content.dart';
 
 // ── M0 카드 20장 (§12-1) ─────────────────────────────────────
 
@@ -385,6 +386,17 @@ Enemy nachal() => const Enemy(
 /// 함께 둬 한 화면에서 서로 다른 다음 행동을 읽게 하되, 체력 합계는 M0 한 전투가
 /// 2~3분을 넘기지 않도록 58로 제한한다.
 List<Enemy> defaultEncounter() => [agwi(), wongwi(), dokgwi()];
+
+/// M1 런 재생에 주입하는 M0 콘텐츠.
+///
+/// `defaultEncounter()`의 세 적은 M0에서 검증한 기본 조합으로 유지하고, 남은
+/// 두 적까지 풀에 넣어 런 노드가 encounter 스트림으로 구성을 뽑는다. 덱 보상
+/// 전에는 [starterDeck]을 바꾸지 않는다.
+RunContent m0RunContent() => RunContent(
+  maxHp: startingHp,
+  deck: starterDeck,
+  encounterPool: [...defaultEncounter(), yacha(), nachal()],
+);
 
 /// 플레이어 시작 체력 (§3.2 — 체력 범위 0~80).
 const startingHp = 80;
