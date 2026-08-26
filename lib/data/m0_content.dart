@@ -301,13 +301,40 @@ const m0Cards = <CardDef>[
   greatPurification,
 ];
 
-/// 시작 덱은 M0 카드 20종을 각 1장씩 담는다.
+/// 무관의 시작 덱 8장 (§2.1).
 ///
-/// M0에는 보상·상점이 없어 시작 덱 밖의 카드는 실제 플레이에서 절대 보이지 않는다.
-/// 그래서 §8.1의 업 부과와 정화 거래를 한 전투에서 관찰할 수 있도록 모든 카드를
-/// 드로우 후보로 넣는다. 중복은 늘리지 않아 5장씩 네 번의 노출로 실험 범위를
-/// 제한하며, 전투가 불필요하게 길어지는 것을 피한다.
-const starterDeck = m0Cards;
+/// 기본 공격·방어를 두 장씩 두고, 업을 내는 공격 둘과 업 방어 하나를 넣는다.
+/// 여기에 체력을 대가로 업을 씻는 [confession]을 함께 넣어 §8.1의 첫 질문이
+/// 첫 전투부터 성립하게 한다. 즉시 처치·생존을 위해 업을 쌓을지, 정화를 위해
+/// 체력과 한 장을 쓸지 선택하게 하며, 나머지 M0 카드는 보상으로 발견한다.
+const starterDeck = <CardDef>[
+  strike,
+  strike,
+  defend,
+  defend,
+  bladeOfGrudge,
+  sinfulSlash,
+  greedyBarrier,
+  confession,
+];
+
+/// 시작 덱에 없는 M0 카드는 모두 전투 카드 보상에서만 만난다.
+const cardRewardPool = <CardDef>[
+  venomVerdict,
+  inquisitionBrand,
+  twinVerdict,
+  suppressingCut,
+  cleanCut,
+  ironGuard,
+  steadyBreath,
+  recoveredEnergy,
+  guardianSigil,
+  weakeningGlance,
+  hellfireMomentum,
+  ironVow,
+  clingingOath,
+  greatPurification,
+];
 
 // ── 적 ────────────────────────────────────────────────────
 
@@ -390,12 +417,13 @@ List<Enemy> defaultEncounter() => [agwi(), wongwi(), dokgwi()];
 /// M1 런 재생에 주입하는 M0 콘텐츠.
 ///
 /// `defaultEncounter()`의 세 적은 M0에서 검증한 기본 조합으로 유지하고, 남은
-/// 두 적까지 풀에 넣어 런 노드가 encounter 스트림으로 구성을 뽑는다. 덱 보상
-/// 전에는 [starterDeck]을 바꾸지 않는다.
+/// 두 적까지 풀에 넣어 런 노드가 encounter 스트림으로 구성을 뽑는다. 카드 보상이
+/// 생겼으므로 시작 덱 밖의 [cardRewardPool]도 함께 주입한다.
 RunContent m0RunContent() => RunContent(
   maxHp: startingHp,
   deck: starterDeck,
   encounterPool: [...defaultEncounter(), yacha(), nachal()],
+  cardRewardPool: cardRewardPool,
 );
 
 /// 플레이어 시작 체력 (§3.2 — 체력 범위 0~80).
