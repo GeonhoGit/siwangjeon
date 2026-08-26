@@ -813,4 +813,23 @@ void main() {
       await disposeTree(tester);
     }
   });
+
+  testWidgets('적 3마리 조우도 1.0×와 1.3×에서 손패 경계를 지킨다', (tester) async {
+    for (final textScale in [1.0, 1.3]) {
+      await pumpCombat(tester, textScale: textScale, seed: 20260826);
+
+      try {
+        expect(find.text('아귀'), findsOneWidget);
+        expect(find.text('원귀'), findsOneWidget);
+        expect(find.text('독귀'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+        expectHandIsInsideFlow(tester, 5);
+        expectHandIsInLowerSixtyPercent(tester, 5);
+        expectFanHasNoTopBlankBand(tester, 5);
+      } finally {
+        await disposeTree(tester);
+      }
+    }
+  });
 }

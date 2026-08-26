@@ -324,14 +324,24 @@ class _EnemyArea extends StatelessWidget {
             children: [
               for (var i = 0; i < state.enemies.length; i++)
                 if (state.enemies[i].isAlive)
-                  _EnemyView(
-                    enemy: state.enemies[i],
-                    intentDamage: previewEnemyDamage(state, i),
-                    incoming: selectedCard == null || !selectedCard!.targeted
-                        ? null
-                        : previewDamage(state, selectedCard!, targetIndex: i),
-                    targeting: onTapEnemy != null,
-                    onTap: onTapEnemy == null ? null : () => onTapEnemy!(i),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: _EnemyView(
+                        enemy: state.enemies[i],
+                        intentDamage: previewEnemyDamage(state, i),
+                        incoming:
+                            selectedCard == null || !selectedCard!.targeted
+                            ? null
+                            : previewDamage(
+                                state,
+                                selectedCard!,
+                                targetIndex: i,
+                              ),
+                        targeting: onTapEnemy != null,
+                        onTap: onTapEnemy == null ? null : () => onTapEnemy!(i),
+                      ),
+                    ),
                   ),
             ],
           ),
@@ -368,14 +378,20 @@ class _EnemyView extends StatelessWidget {
         children: [
           // §3.1 — 다음 행동은 항상 아이콘으로 미리 표시한다.
           // M0은 임시로 글자다.
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+          SizedBox(
+            width: 92,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(intentText, style: const TextStyle(fontSize: 12)),
+              ),
             ),
-            child: Text(intentText, style: const TextStyle(fontSize: 12)),
           ),
           const SizedBox(height: 6),
 
