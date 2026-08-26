@@ -193,6 +193,64 @@ void main() {
     }
   });
 
+  testWidgets('선택한 가운데 손패 카드는 1.12배로 확대된다 (§5.3)', (tester) async {
+    await pumpCombat(
+      tester,
+      controller: () => _FixedHandCombatController(const [
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+      ]),
+    );
+
+    try {
+      final card = find.byKey(const ValueKey('hand-card-2'));
+      final before = paintBounds(tester, card);
+      await tester.tapAt(before.center);
+      await tester.pump(const Duration(milliseconds: 120));
+
+      final after = paintBounds(tester, card);
+      expect(after.width, closeTo(before.width * 1.12, 0.01));
+      expect(after.height, closeTo(before.height * 1.12, 0.01));
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
+  testWidgets('Pixel 8의 1.0×와 1.3×에서 양끝 선택 손패도 화면 안에 남는다', (tester) async {
+    for (final textScale in [1.0, 1.3]) {
+      for (final selectedIndex in [0, 4]) {
+        await pumpCombat(
+          tester,
+          textScale: textScale,
+          controller: () => _FixedHandCombatController(const [
+            bladeOfGrudge,
+            bladeOfGrudge,
+            bladeOfGrudge,
+            bladeOfGrudge,
+            bladeOfGrudge,
+          ]),
+        );
+
+        try {
+          final selected = paintBounds(
+            tester,
+            find.byKey(ValueKey('hand-card-$selectedIndex')),
+          );
+          await tester.tapAt(selected.center);
+          await tester.pump(const Duration(milliseconds: 120));
+
+          expect(tester.takeException(), isNull);
+          expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+        } finally {
+          await disposeTree(tester);
+        }
+      }
+    }
+  });
+
   testWidgets('카드를 탭해 고르고, 적을 탭해 사용한다 (§5.3 탭-탭)', (tester) async {
     await pumpCombat(tester);
 
