@@ -1012,6 +1012,36 @@ class _HandFanCardPlacement {
   final double top;
 }
 
+/// 손패를 그릴 순서다.
+///
+/// Flow는 뒤에 그린 자식이 앞에 오므로, 선택 카드는 항상 마지막에 둔다.
+/// 선택 전환 중에는 직전 선택도 일반 카드보다 앞에 두되, 새 선택 카드가
+/// 최상단을 유지한다. 축소가 끝난 직전 선택은 원래 인덱스 순서로 돌려 놓는다.
+List<int> handFanPaintOrder({
+  required int cardCount,
+  required int? selected,
+  required int? previousSelected,
+  required double selectionProgress,
+}) {
+  final order = List.generate(cardCount, (index) => index);
+  final activeSelected = selected != null && selected < cardCount
+      ? selected
+      : null;
+  final activePrevious =
+      selectionProgress < 1 &&
+          previousSelected != null &&
+          previousSelected < cardCount &&
+          previousSelected != activeSelected
+      ? previousSelected
+      : null;
+
+  order.remove(activePrevious);
+  order.remove(activeSelected);
+  if (activePrevious != null) order.add(activePrevious);
+  if (activeSelected != null) order.add(activeSelected);
+  return order;
+}
+
 class _HandFanDelegate extends FlowDelegate {
   _HandFanDelegate({
     required this.cardCount,
@@ -1047,7 +1077,12 @@ class _HandFanDelegate extends FlowDelegate {
     );
     final placements = layout.placeIn(context.size);
 
-    for (var i = 0; i < placements.length; i++) {
+    for (final i in handFanPaintOrder(
+      cardCount: cardCount,
+      selected: selected,
+      previousSelected: previousSelected,
+      selectionProgress: _selectionProgress.value,
+    )) {
       final placement = placements[i];
       final card = placement.geometry;
 
