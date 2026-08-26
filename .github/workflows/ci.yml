@@ -1,0 +1,32 @@
+# domain 레이어의 순수성(기획서 §7.2)과 lint 무경고를 CI가 지킨다.
+#
+# Flutter 버전을 stable이 아니라 고정 값으로 박아 두는 이유:
+# 프레임워크가 올라가는 날 내 커밋과 무관하게 빨간불이 뜨면
+# 그때부터 CI 결과를 아무도 믿지 않게 된다.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # info 경고도 실패로 다룬다. 쌓이기 시작하면 아무도 보지 않게 되므로
+      # 0건인 지금 걸어 두는 것이 가장 싸다.
+      - run: flutter analyze --fatal-infos
+
+      - run: flutter test

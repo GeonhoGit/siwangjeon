@@ -49,3 +49,18 @@ app.*.map.json
 art-pipeline/dataset/raw/
 art-pipeline/raw/
 art-pipeline/sheets/
+
+# ── 비밀정보 (절대 커밋 금지) ──
+# M3에서 서명키·Firebase가 들어온다. 그때 실수하면 이미 늦으므로 미리 막아 둔다.
+*.jks
+*.keystore
+/android/key.properties
+/android/app/google-services.json
+/ios/Runner/GoogleService-Info.plist
+/lib/firebase_options.dart
+.env
+.env.*
+!.env.example
+
+# ── 대용량 (실행가이드 §11.2 — Release 첨부 + 외장 백업으로 관리) ──
+art-pipeline/lora/*.safetensors
