@@ -22,7 +22,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/combat_controller.dart';
 import '../domain/combat/combat_engine.dart';
-import '../domain/effect/card_effect.dart';
 import '../domain/model/card.dart';
 import '../domain/model/combat_state.dart';
 import '../domain/model/enemy.dart';
@@ -614,12 +613,17 @@ class _ResourceRow extends StatelessWidget {
                 color: const Color(0xFFE0C060),
               ),
             ),
-          const Spacer(),
-          Text(
-            '덱 ${state.drawPile.length}   버림 ${state.discardPile.length}',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.65),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '덱 ${state.drawPile.length}   버림 ${state.discardPile.length}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.65),
+              ),
             ),
           ),
           if (state.block > 0) ...[
@@ -1048,17 +1052,26 @@ class _CardView extends StatelessWidget {
       _ => Colors.grey,
     };
 
-    // 숫자는 엔진이 준 것만 쓴다. 화면이 다시 계산하면 카드에 적힌 값과
-    // 실제로 들어가는 값이 갈라진다.
+    // 피해·방어는 엔진이 준 것만 쓰고, 나머지는 카드 정의의 고정 효과만 읽는다.
+    // 화면에서 상태 규칙을 다시 계산하면 카드에 적힌 값과 실제 결과가 갈라진다.
     final damage = previewDamage(state, card);
     final block = previewBlock(state, card);
+    final effects = cardEffectLabels(card, damage: damage, block: block);
+    final effectLines = [
+      effects.take(2).join(' · '),
+      if (effects.length > 2) effects.skip(2).join(' · '),
+    ];
     final costDiameter = MediaQuery.textScalerOf(context).scale(20);
 
     return Opacity(
       opacity: playable ? 1 : 0.45,
       child: Container(
         width: width,
-        constraints: const BoxConstraints(minHeight: _cardMinimumHeight),
+        constraints: BoxConstraints(
+          // 둘째 효과 줄이 있는 카드는 내용을 누르지 않을 여백을 따로 둔다.
+          // 높이는 카드별 실제 내용 수에 따라 달라지고, Flow가 그 값을 측정한다.
+          minHeight: _cardMinimumHeight + (effects.length > 2 ? 12 : 0),
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFF241C20),
           borderRadius: BorderRadius.circular(9),
@@ -1094,26 +1107,6 @@ class _CardView extends StatelessWidget {
                     ),
                   ),
                 ),
-                // 업 표시는 카드에서 가장 중요한 정보다(§3.3).
-                // 이게 눈에 띄지 않으면 §8.1의 1번 질문은 물어볼 수조차 없다.
-                if (card.karma > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _karmaColor.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: _karmaColor.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    child: Text(
-                      '업 +${card.karma}',
-                      style: const TextStyle(fontSize: 9, color: _karmaColor),
-                    ),
-                  ),
               ],
             ),
             const SizedBox(height: 5),
@@ -1124,30 +1117,21 @@ class _CardView extends StatelessWidget {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-            if (damage != null)
-              Text(
-                '피해 $damage',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: accent,
-                ),
-              ),
-            if (block != null)
-              Text(
-                '방어 $block',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF7FA8C9),
-                ),
-              ),
-            for (final effect in card.effects.whereType<ApplyStatusEffect>())
-              Text(
-                '${statusLabel(effect.status)} ${effect.stacks}',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.white.withValues(alpha: 0.7),
+            for (final effectLine in effectLines)
+              SizedBox(
+                width: double.infinity,
+                child: FittedBox(
+                  alignment: Alignment.centerLeft,
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    effectLine,
+                    softWrap: false,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: accent.withValues(alpha: 0.9),
+                    ),
+                  ),
                 ),
               ),
           ],

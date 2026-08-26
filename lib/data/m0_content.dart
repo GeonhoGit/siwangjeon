@@ -15,9 +15,9 @@ import '../domain/model/card.dart';
 import '../domain/model/enemy.dart';
 import '../domain/model/status.dart';
 
-// ── 카드 3장 (§12-1) ────────────────────────────────────────
+// ── M0 카드 20장 (§12-1) ─────────────────────────────────────
 
-/// 기본 공격. 업이 붙지 않는 안전한 선택지.
+/// 기본 공격. 업을 내지 않아 심판을 미루는 대신 피해도 평범한 안전 선택이다.
 const strike = CardDef(
   id: 'card_strike',
   name: '타격',
@@ -26,7 +26,7 @@ const strike = CardDef(
   effects: [DamageEffect(value: 6)],
 );
 
-/// 기본 방어.
+/// 기본 방어. 업을 늘리지 않고 다음 적 턴을 견뎌 정화·고업 카드의 여지를 만든다.
 const defend = CardDef(
   id: 'card_defend',
   name: '수비',
@@ -53,23 +53,260 @@ const bladeOfGrudge = CardDef(
   ],
 );
 
-/// 시작 덱 10장.
-///
-/// 「원한의 칼날」이 2장인 이유는, 한 전투에 한 번쯤 손에 잡혀야
-/// "지금 쓸 것인가"라는 질문이 생기기 때문이다. 4장이면 그냥 주력이 되고
-/// 1장이면 뽑히지 않는 턴이 대부분이라 질문 자체가 생기지 않는다.
-const starterDeck = <CardDef>[
+/// 업 2를 내고 즉시 10 피해를 얻는다. 심판을 앞당겨 지금의 처치를 서두르는 거래다.
+const sinfulSlash = CardDef(
+  id: 'card_sinful_slash',
+  name: '악업의 베기',
+  type: CardType.attack,
+  rarity: CardRarity.uncommon,
+  cost: 1,
+  karma: 2,
+  effects: [DamageEffect(value: 10)],
+);
+
+/// 업 1을 내고 독 3을 남긴다. 당장 덜 때리는 대신 이후 턴의 피해를 미리 사는 거래다.
+const venomVerdict = CardDef(
+  id: 'card_venom_verdict',
+  name: '독사의 판결',
+  type: CardType.attack,
+  cost: 1,
+  karma: 1,
+  effects: [
+    DamageEffect(value: 4),
+    ApplyStatusEffect(status: StatusId.poison, stacks: 3),
+  ],
+);
+
+/// 업 2를 내고 취약 2를 건다. 이어지는 공격을 크게 만들지만 심판을 뒤로 미루지 못한다.
+const inquisitionBrand = CardDef(
+  id: 'card_inquisition_brand',
+  name: '추궁의 낙인',
+  type: CardType.attack,
+  rarity: CardRarity.uncommon,
+  cost: 1,
+  karma: 2,
+  effects: [
+    DamageEffect(value: 5),
+    ApplyStatusEffect(status: StatusId.vulnerable, stacks: 2),
+  ],
+);
+
+/// 업 없이 두 번 나눈 피해를 준다. 방어도에는 약하지만 업을 피하며 압박을 이어 가는 선택이다.
+const twinVerdict = CardDef(
+  id: 'card_twin_verdict',
+  name: '연속 단죄',
+  type: CardType.attack,
+  rarity: CardRarity.uncommon,
+  cost: 1,
+  effects: [DamageEffect(value: 4), DamageEffect(value: 4)],
+);
+
+/// 업 대신 약화 2로 다음 공격을 낮춘다. 지금 밀어붙이지 않고 정화할 시간을 사는 공격이다.
+const suppressingCut = CardDef(
+  id: 'card_suppressing_cut',
+  name: '제압 베기',
+  type: CardType.attack,
+  cost: 1,
+  effects: [
+    DamageEffect(value: 5),
+    ApplyStatusEffect(status: StatusId.weak, stacks: 2),
+  ],
+);
+
+/// 업을 내지 않는 8 피해다. 높은 보상은 없지만 심판 수치를 유지하며 마무리하는 기준선이다.
+const cleanCut = CardDef(
+  id: 'card_clean_cut',
+  name: '정결한 베기',
+  type: CardType.attack,
+  cost: 1,
+  effects: [DamageEffect(value: 8)],
+);
+
+/// 업을 내지 않는 큰 방어다. 심판을 키우지 않고 강한 예고를 막아 정화 선택을 보존한다.
+const ironGuard = CardDef(
+  id: 'card_iron_guard',
+  name: '철갑 수비',
+  type: CardType.skill,
+  cost: 1,
+  targeted: false,
+  effects: [BlockEffect(10)],
+);
+
+/// 작은 방어 뒤 한 장을 뽑는다. 카드를 낸 뒤 빈 한 칸만 채워 손패 상한 낭비 없이 선택지를 넓힌다.
+const steadyBreath = CardDef(
+  id: 'card_steady_breath',
+  name: '호흡 고르기',
+  type: CardType.skill,
+  cost: 1,
+  targeted: false,
+  effects: [BlockEffect(3), DrawCardsEffect(1)],
+);
+
+/// 방어와 기력 1을 함께 준다. 업 없이 다음 고비용 지속 카드에 기력을 넘기는 연결 카드다.
+const recoveredEnergy = CardDef(
+  id: 'card_recovered_energy',
+  name: '되찾은 기력',
+  type: CardType.skill,
+  cost: 1,
+  targeted: false,
+  effects: [BlockEffect(3), GainEnergyEffect(1)],
+);
+
+/// 방어와 굳음 1을 남긴다. 업을 내지 않는 장기 방어로 정화 뒤에도 버틸 수 있게 한다.
+const guardianSigil = CardDef(
+  id: 'card_guardian_sigil',
+  name: '수호의 각인',
+  type: CardType.skill,
+  rarity: CardRarity.uncommon,
+  cost: 1,
+  targeted: false,
+  effects: [
+    BlockEffect(5),
+    ApplyStatusEffect(
+      status: StatusId.dexterity,
+      stacks: 1,
+      target: EffectTarget.self,
+    ),
+  ],
+);
+
+/// 업 2를 내고 큰 방어를 얻는다. 지금 생존을 사는 대신 나중의 심판을 정화로 갚아야 한다.
+const greedyBarrier = CardDef(
+  id: 'card_greedy_barrier',
+  name: '탐욕의 장벽',
+  type: CardType.skill,
+  rarity: CardRarity.uncommon,
+  cost: 1,
+  karma: 2,
+  targeted: false,
+  effects: [BlockEffect(11)],
+);
+
+/// 작은 방어와 적 약화 2를 준다. 업을 쌓지 않고 다수의 다음 공격을 낮춰 정화할 턴을 만든다.
+const weakeningGlance = CardDef(
+  id: 'card_weakening_glance',
+  name: '외면의 약화',
+  type: CardType.skill,
+  cost: 1,
+  effects: [
+    BlockEffect(3),
+    ApplyStatusEffect(status: StatusId.weak, stacks: 2),
+  ],
+);
+
+/// 업 3을 내고 기세 2를 전투 내내 남긴다. 빠른 처치와 더 높은 심판을 맞바꾸는 지속 투자다.
+const hellfireMomentum = CardDef(
+  id: 'card_hellfire_momentum',
+  name: '업화의 기세',
+  type: CardType.power,
+  rarity: CardRarity.rare,
+  cost: 1,
+  karma: 3,
+  targeted: false,
+  effects: [
+    BlockEffect(2),
+    ApplyStatusEffect(
+      status: StatusId.strength,
+      stacks: 2,
+      target: EffectTarget.self,
+    ),
+  ],
+);
+
+/// 업 없이 굳음 2를 지속시킨다. 심판 대신 방어 누적으로 긴 전투와 정화를 선택하는 투자다.
+const ironVow = CardDef(
+  id: 'card_iron_vow',
+  name: '강철의 서약',
+  type: CardType.power,
+  rarity: CardRarity.uncommon,
+  cost: 2,
+  targeted: false,
+  effects: [
+    BlockEffect(2),
+    ApplyStatusEffect(
+      status: StatusId.dexterity,
+      stacks: 2,
+      target: EffectTarget.self,
+    ),
+  ],
+);
+
+/// 업 1을 내고 기세·굳음 1을 모두 남긴다. 작은 심판 부담으로 공격과 방어를 함께 굳히는 절충이다.
+const clingingOath = CardDef(
+  id: 'card_clinging_oath',
+  name: '집착의 맹세',
+  type: CardType.power,
+  rarity: CardRarity.rare,
+  cost: 2,
+  karma: 1,
+  targeted: false,
+  effects: [
+    BlockEffect(2),
+    ApplyStatusEffect(
+      status: StatusId.strength,
+      stacks: 1,
+      target: EffectTarget.self,
+    ),
+    ApplyStatusEffect(
+      status: StatusId.dexterity,
+      stacks: 1,
+      target: EffectTarget.self,
+    ),
+  ],
+);
+
+/// 체력 5를 내고 업 8을 씻는다. 심판을 늦추기 위해 즉시 생존 자원을 포기하는 정화다.
+const confession = CardDef(
+  id: 'card_confession',
+  name: '고해',
+  type: CardType.skill,
+  cost: 1,
+  targeted: false,
+  effects: [BlockEffect(2), LoseHpEffect(5), ChangeKarmaEffect(-8)],
+);
+
+/// 한 턴의 기력 3을 모두 내고 업 18을 씻는다. 공격 기회를 통째로 포기하는 큰 정화다.
+const greatPurification = CardDef(
+  id: 'card_great_purification',
+  name: '대정화',
+  type: CardType.skill,
+  rarity: CardRarity.rare,
+  cost: 3,
+  targeted: false,
+  effects: [BlockEffect(6), ChangeKarmaEffect(-18)],
+);
+
+/// M0 카드 풀. 전투 규칙이 흔들리는 동안에는 JSON 스키마가 아니라 Dart 상수로 둔다(§7.3).
+const m0Cards = <CardDef>[
   strike,
-  strike,
-  strike,
-  strike,
-  defend,
-  defend,
-  defend,
-  defend,
   bladeOfGrudge,
-  bladeOfGrudge,
+  sinfulSlash,
+  venomVerdict,
+  inquisitionBrand,
+  twinVerdict,
+  suppressingCut,
+  cleanCut,
+  defend,
+  ironGuard,
+  steadyBreath,
+  recoveredEnergy,
+  guardianSigil,
+  greedyBarrier,
+  weakeningGlance,
+  hellfireMomentum,
+  ironVow,
+  clingingOath,
+  confession,
+  greatPurification,
 ];
+
+/// 시작 덱은 M0 카드 20종을 각 1장씩 담는다.
+///
+/// M0에는 보상·상점이 없어 시작 덱 밖의 카드는 실제 플레이에서 절대 보이지 않는다.
+/// 그래서 §8.1의 업 부과와 정화 거래를 한 전투에서 관찰할 수 있도록 모든 카드를
+/// 드로우 후보로 넣는다. 중복은 늘리지 않아 5장씩 네 번의 노출로 실험 범위를
+/// 제한하며, 전투가 불필요하게 길어지는 것을 피한다.
+const starterDeck = m0Cards;
 
 // ── 적 ────────────────────────────────────────────────────
 

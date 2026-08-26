@@ -8,6 +8,8 @@
 /// 만족하지 않는다. 아이콘은 M1의 실제 UI에서 들어온다.
 library;
 
+import '../domain/effect/card_effect.dart';
+import '../domain/model/card.dart';
 import '../domain/model/enemy.dart';
 import '../domain/model/status.dart';
 
@@ -41,4 +43,38 @@ String intentLabel(EnemyMove move, {int? damage}) => switch (move) {
 String _attackIntentLabel({required int? damage, required int times}) {
   if (damage == null) return times > 1 ? '공격 ×$times' : '공격';
   return times > 1 ? '공격 $damage ×$times' : '공격 $damage';
+}
+
+/// 카드에 적을 효과 요약.
+///
+/// 피해·방어는 이미 domain이 상태 효과까지 적용해 계산한 값을 받고, 나머지는
+/// 카드 정의의 고정 숫자만 읽는다. 따라서 이 파일은 규칙을 다시 계산하지 않고
+/// 카드가 내는 업·체력·드로우·기력 거래를 읽기 좋게 배치만 한다.
+List<String> cardEffectLabels(CardDef card, {int? damage, int? block}) {
+  final labels = <String>[
+    if (damage != null) '피해 $damage',
+    if (block != null) '방어 $block',
+    if (card.karma != 0) '업 +${card.karma}',
+  ];
+
+  for (final effect in card.effects) {
+    switch (effect) {
+      case DamageEffect():
+      case BlockEffect():
+        continue;
+      case ApplyStatusEffect():
+        labels.add('${statusLabel(effect.status)} ${effect.stacks}');
+      case ChangeKarmaEffect():
+        final sign = effect.amount > 0 ? '+' : '';
+        labels.add('업 $sign${effect.amount}');
+      case DrawCardsEffect():
+        labels.add('드로우 ${effect.count}');
+      case GainEnergyEffect():
+        labels.add('기력 +${effect.amount}');
+      case LoseHpEffect():
+        labels.add('체력 -${effect.amount}');
+    }
+  }
+
+  return labels;
 }
