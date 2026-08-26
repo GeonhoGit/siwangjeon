@@ -738,22 +738,27 @@ class _HandFanDelegate extends FlowDelegate {
             ? 1 + (_selectedScale - 1) * _selectionProgress.value
             : 1.0,
     ];
-    // Flow는 Matrix4로 그린 확대를 자식 크기에 반영하지 않는다. 실제 그려지는
-    // 폭 w·cos(θ) + h·sin(θ)에 현재 확대 배율을 포함해야 양끝이 남는다.
-    final widestCard = [
+    final baseProjectedWidths = [
       for (var i = 0; i < cardCount; i++)
-        scales[i] *
-            (sizes[i].width * math.cos(angles[i].abs()) +
-                sizes[i].height * math.sin(angles[i].abs())),
+        sizes[i].width * math.cos(baseAngles[i].abs()) +
+            sizes[i].height * math.sin(baseAngles[i].abs()),
+    ];
+    // 선택 확대를 처음부터 예약해 간격이 애니메이션 중에도 흔들리지 않게 한다.
+    // 회전한 폭과 선택되어 회전이 0이 된 폭 중 큰 값을 쓰므로, Matrix4 확대가
+    // 자식 크기에 반영되지 않는 Flow에서도 양끝 카드의 화면 여백은 보장된다.
+    final widestReservedCard = [
+      for (var i = 0; i < cardCount; i++)
+        _selectedScale * math.max(baseProjectedWidths[i], sizes[i].width),
     ].reduce(math.max);
+    final maxStableSpread = baseProjectedWidths.reduce(math.max);
 
     final spread = cardCount == 1
         ? 0.0
         : math.min(
-            widestCard,
+            maxStableSpread,
             math.max(
               0.0,
-              (context.size.width - widestCard - _edgeInset * 2) /
+              (context.size.width - widestReservedCard - _edgeInset * 2) /
                   (cardCount - 1),
             ),
           );
