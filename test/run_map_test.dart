@@ -8,8 +8,8 @@ import 'package:siwangjeon/domain/run/run_state.dart';
 import 'package:siwangjeon/domain/run/run_tuning.dart';
 
 void main() {
-  group('1막 저승길 맵', () {
-    test('같은 시드는 같은 맵을, 다른 시드는 다른 맵을 만든다', () {
+  group('1막 결정론적 맵', () {
+    test('같은 시드는 분기를 포함해 같은 맵을, 다른 시드는 다른 맵을 만든다', () {
       expect(
         _mapSignature(generateActOneMap(20260826)),
         _mapSignature(generateActOneMap(20260826)),
@@ -18,31 +18,76 @@ void main() {
         _mapSignature(generateActOneMap(20260826)),
         isNot(_mapSignature(generateActOneMap(20260827))),
       );
+      expect(
+        _branchSignature(generateActOneMap(20260826)),
+        isNot(_branchSignature(generateActOneMap(20260827))),
+      );
     });
 
-    test('7개 일반 노드마다 보스가 오고 1막 길이는 약 15개다', () {
+    test('막당 보스는 마지막 깊이의 1명이고 방문 깊이는 정확히 15개다', () {
       final map = generateActOneMap(20260826);
       const tuning = RunTuning.m1;
-      final bossIndexes = <int>[];
+      final bosses = map.nodes
+          .where((node) => node.type == RunNodeType.boss)
+          .toList();
 
-      for (var index = 0; index < map.nodes.length; index++) {
-        if (map.nodes[index].type == RunNodeType.boss) bossIndexes.add(index);
-      }
-
-      expect(
-        map.nodes.length,
-        inInclusiveRange(tuning.minNodesPerAct, tuning.maxNodesPerAct),
-      );
-      expect(bossIndexes, [tuning.nonBossNodesPerBoss, tuning.nodesPerAct - 1]);
+      expect(tuning.nodesPerAct, 15);
+      expect(tuning.minNodesPerAct, 15);
+      expect(tuning.maxNodesPerAct, 15);
+      expect(bosses, hasLength(tuning.bossesPerAct));
+      expect(bosses.single.depth, tuning.nodesPerAct - 1);
+      expect(bosses.single.nextNodeIds, isEmpty);
       expect(
         map.nodes
-            .where((node) => node.id < tuning.nonBossNodesPerBoss)
+            .where((node) => node.depth < bosses.single.depth)
             .every((node) => node.type != RunNodeType.boss),
         isTrue,
       );
     });
 
-    test('맵 생성은 encounter 수열을 쓰고 combat 수열을 바꾸지 않는다', () {
+    test('모든 경로는 15개를 방문하고 어느 노드도 보스에 막히지 않는다', () {
+      final map = generateActOneMap(20260826);
+      const tuning = RunTuning.m1;
+
+      for (final node in map.nodes) {
+        expect(_pathLengthsToBoss(map, node.id), isNotEmpty);
+      }
+      expect(_pathLengthsToBoss(map, map.nodes.first.id), {tuning.nodesPerAct});
+    });
+
+    test('시작점에서 모든 노드가 닿고 실제 갈림길이 있다', () {
+      final map = generateActOneMap(20260826);
+      final reachableNodeIds = _reachableNodeIds(map, map.nodes.first.id);
+
+      expect(reachableNodeIds, map.nodes.map((node) => node.id).toSet());
+      final choiceDepths = map.nodes
+          .where((node) => node.nextNodeIds.length >= 2)
+          .map((node) => node.depth)
+          .toSet();
+      const tuning = RunTuning.m1;
+
+      expect(
+        choiceDepths.length,
+        tuning.lastBranchDepth - tuning.firstBranchDepth + 1,
+      );
+      expect(choiceDepths.length, greaterThanOrEqualTo(2));
+    });
+
+    test('중간 정예전은 어떤 경로에서도 보장된다', () {
+      final map = generateActOneMap(20260826);
+      const tuning = RunTuning.m1;
+      final middleNodes = map.nodes
+          .where((node) => node.depth == tuning.guaranteedEliteDepth)
+          .toList();
+
+      expect(middleNodes, isNotEmpty);
+      expect(
+        middleNodes.every((node) => node.type == RunNodeType.elite),
+        isTrue,
+      );
+    });
+
+    test('맵 생성은 encounter 수열만 읽고 combat 수열은 바꾸지 않는다', () {
       const tuning = RunTuning(
         nodeTypeWeights: [
           RunNodeWeight(RunNodeType.combat, 1),
@@ -77,20 +122,25 @@ void main() {
   });
 
   group('런 액션 로그 재생', () {
-    test('같은 시드와 같은 액션 열은 같은 런 진행 상태를 복원한다', () {
+    test('같은 시드와 같은 분기 선택 액션 열은 같은 런 진행 상태를 복원한다', () {
       final original = startRun(seed: 53, characterId: 'm0');
+      final map = generateActOneMap(original.seed);
+      final selectedBranchId = map.nodes.first.nextNodeIds.last;
       final afterFirstMove = applyRunAction(
         original,
         const MoveToNode(nodeId: 0),
       );
       final afterSecondMove = applyRunAction(
         afterFirstMove,
-        const MoveToNode(nodeId: 1),
+        MoveToNode(nodeId: selectedBranchId),
       );
-      const restored = RunState(
+      final restored = RunState(
         seed: 53,
         characterId: 'm0',
-        actionLog: [MoveToNode(nodeId: 0), MoveToNode(nodeId: 1)],
+        actionLog: [
+          MoveToNode(nodeId: 0),
+          MoveToNode(nodeId: selectedBranchId),
+        ],
       );
 
       final expected = replayRun(afterSecondMove);
@@ -101,26 +151,41 @@ void main() {
       expect(actual.currentNodeId, expected.currentNodeId);
     });
 
-    test('합법 이동은 legalRunActions 한곳에서 결정되고, 건너뛰기는 거부된다', () {
+    test('합법 이동은 legalRunActions 한곳에서 결정되고, 갈 수 없는 분기는 거부된다', () {
       final state = startRun(seed: 7, characterId: 'm0');
+      final map = generateActOneMap(state.seed);
+      final firstNodeId = map.nodes.first.id;
+      final unreachableFromFirstNode = map.nodes.firstWhere(
+        (node) => node.depth == 3,
+      );
 
       expect(
         legalRunActions(
           state,
         ).whereType<MoveToNode>().map((action) => action.nodeId),
-        [0],
+        [firstNodeId],
       );
       expect(
-        () => applyRunAction(state, const MoveToNode(nodeId: 1)),
+        () => applyRunAction(
+          state,
+          MoveToNode(nodeId: unreachableFromFirstNode.id),
+        ),
         throwsA(isA<IllegalRunActionError>()),
       );
 
-      final entered = applyRunAction(state, const MoveToNode(nodeId: 0));
+      final entered = applyRunAction(state, MoveToNode(nodeId: firstNodeId));
       expect(
         legalRunActions(
           entered,
         ).whereType<MoveToNode>().map((action) => action.nodeId),
-        [1],
+        map.nodeById(firstNodeId).nextNodeIds,
+      );
+      expect(
+        () => applyRunAction(
+          entered,
+          MoveToNode(nodeId: unreachableFromFirstNode.id),
+        ),
+        throwsA(isA<IllegalRunActionError>()),
       );
     });
   });
@@ -129,6 +194,36 @@ void main() {
 List<String> _mapSignature(RunMap map) {
   return [
     for (final node in map.nodes)
-      '${node.id}:${node.type.name}:${node.nextNodeIds.join(',')}',
+      '${node.id}:${node.depth}:${node.type.name}:${node.nextNodeIds.join(',')}',
   ];
+}
+
+List<String> _branchSignature(RunMap map) {
+  return [
+    for (final node in map.nodes) '${node.depth}:${node.nextNodeIds.join(',')}',
+  ];
+}
+
+Set<int> _pathLengthsToBoss(RunMap map, int nodeId) {
+  final node = map.nodeById(nodeId);
+  if (node.type == RunNodeType.boss) return {1};
+
+  return {
+    for (final nextNodeId in node.nextNodeIds)
+      for (final length in _pathLengthsToBoss(map, nextNodeId)) length + 1,
+  };
+}
+
+Set<int> _reachableNodeIds(RunMap map, int startNodeId) {
+  final reached = <int>{startNodeId};
+  final pending = <int>[startNodeId];
+
+  while (pending.isNotEmpty) {
+    final node = map.nodeById(pending.removeLast());
+    for (final nextNodeId in node.nextNodeIds) {
+      if (reached.add(nextNodeId)) pending.add(nextNodeId);
+    }
+  }
+
+  return reached;
 }
