@@ -34,10 +34,21 @@ const _skillColor = Color(0xFF2E6B6B);
 const _karmaColor = Color(0xFFC9A227);
 const _cardMinimumHeight = 132.0;
 const _cardSecondEffectLineAllowance = 12.0;
-// 예고와 체력 바의 좌우 경계를 맞춰 적의 다음 행동과 생존 상태를 함께 읽는다.
-const _enemyMeterWidth = 92.0;
-// M0 적은 임시 도형이므로, 기존 84dp 최소 크기에서 남는 정보 영역을 채운다.
-const _enemyMinimumBodyExtent = 84.0;
+// 3마리 조우에서도 서로의 도형을 구별할 수 있는 최대 폭이다.
+const _enemyMaximumBodyWidth = 120.0;
+// M0의 임시 도형도 M1 스프라이트가 들어올 자리를 검증해야 한다. 폭보다 40%만
+// 길게 제한해 세로로 약간 긴 인물·귀신 실루엣은 허용하되 기둥이 되지 않게 한다.
+const _enemyMaximumBodyAspectRatio = 1.4;
+
+double _enemyBodyWidthForTextScale(double slotWidth, TextScaler textScaler) {
+  final availableWidth = math.min(_enemyMaximumBodyWidth, slotWidth);
+  // 접근성 글자를 축소하지 않는 대신 임시 도형만 줄여, 좁아진 정보 영역에서도
+  // 예고·체력 수치가 먼저 남게 한다.
+  return math.min(
+    availableWidth,
+    math.max(68, availableWidth / math.max(1, textScaler.scale(1))),
+  );
+}
 
 double _cardReservedMinimumHeight(TextScaler textScaler, int effectCount) =>
     textScaler.scale(
@@ -343,20 +354,32 @@ class _EnemyArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showThreatSummary = MediaQuery.textScalerOf(context).scale(1) <= 1.3;
+
     return Column(
       key: const ValueKey('enemy-area'),
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        Expanded(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              for (var i = 0; i < state.enemies.length; i++)
-                if (state.enemies[i].isAlive)
-                  Expanded(
-                    child: SizedBox.expand(
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            for (var i = 0; i < state.enemies.length; i++)
+              if (state.enemies[i].isAlive)
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => Align(
+                      alignment: Alignment.topCenter,
                       child: _EnemyView(
                         bodyKey: ValueKey('enemy-body-${state.enemies[i].id}'),
                         enemy: state.enemies[i],
+                        contentWidth: math.min(
+                          _enemyMaximumBodyWidth,
+                          constraints.maxWidth,
+                        ),
+                        bodyWidth: _enemyBodyWidthForTextScale(
+                          constraints.maxWidth,
+                          MediaQuery.textScalerOf(context),
+                        ),
                         intentDamage: previewEnemyDamage(state, i),
                         incoming:
                             selectedCard == null || !selectedCard!.targeted
@@ -371,9 +394,10 @@ class _EnemyArea extends StatelessWidget {
                       ),
                     ),
                   ),
-            ],
-          ),
+                ),
+          ],
         ),
+        if (showThreatSummary) _EnemyThreatSummary(state: state),
         _EventStrip(events: events, state: state),
       ],
     );
@@ -384,6 +408,8 @@ class _EnemyView extends StatelessWidget {
   const _EnemyView({
     required this.bodyKey,
     required this.enemy,
+    required this.contentWidth,
+    required this.bodyWidth,
     required this.intentDamage,
     required this.incoming,
     required this.targeting,
@@ -392,6 +418,8 @@ class _EnemyView extends StatelessWidget {
 
   final Key bodyKey;
   final Enemy enemy;
+  final double contentWidth;
+  final double bodyWidth;
   final int? intentDamage;
   final int? incoming;
   final bool targeting;
@@ -403,14 +431,14 @@ class _EnemyView extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.max,
-        children: [
-          // §3.1 — 다음 행동은 항상 아이콘으로 미리 표시한다.
-          // M0은 임시로 글자다.
-          SizedBox(
-            width: _enemyMeterWidth,
-            child: Container(
+      child: SizedBox(
+        width: contentWidth,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // §3.1 — 다음 행동은 항상 아이콘으로 미리 표시한다.
+            // M0은 임시로 글자다.
+            Container(
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -425,72 +453,115 @@ class _EnemyView extends StatelessWidget {
                 style: const TextStyle(fontSize: 12),
               ),
             ),
-          ),
-          const SizedBox(height: 6),
+            const SizedBox(height: 6),
 
-          Expanded(
-            child: Container(
-              key: bodyKey,
-              width: _enemyMinimumBodyExtent,
-              constraints: const BoxConstraints(
-                minHeight: _enemyMinimumBodyExtent,
-              ),
-              decoration: BoxDecoration(
-                color: const Color(0xFF4A3A44),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: targeting
-                      ? _attackColor
-                      : Colors.white.withValues(alpha: 0.2),
-                  width: targeting ? 2.5 : 1,
+            SizedBox(
+              width: bodyWidth,
+              child: AspectRatio(
+                aspectRatio: 1 / _enemyMaximumBodyAspectRatio,
+                key: bodyKey,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4A3A44),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: targeting
+                          ? _attackColor
+                          : Colors.white.withValues(alpha: 0.2),
+                      width: targeting ? 2.5 : 1,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(enemy.name, style: const TextStyle(fontSize: 15)),
+                      if (incoming != null)
+                        Text(
+                          '−$incoming',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: _attackColor,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-              alignment: Alignment.center,
+            ),
+            const SizedBox(height: 5),
+
+            SizedBox(
+              key: ValueKey('enemy-health-${enemy.id}'),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(enemy.name, style: const TextStyle(fontSize: 15)),
-                  if (incoming != null)
-                    Text(
-                      '−$incoming',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: _attackColor,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: enemy.hp / enemy.maxHp,
+                      minHeight: 5,
+                      backgroundColor: Colors.white.withValues(alpha: 0.12),
+                      valueColor: const AlwaysStoppedAnimation(
+                        Color(0xFF9E4A4A),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${enemy.hp} / ${enemy.maxHp}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 5),
 
-          SizedBox(
-            width: _enemyMeterWidth,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: enemy.hp / enemy.maxHp,
-                minHeight: 5,
-                backgroundColor: Colors.white.withValues(alpha: 0.12),
-                valueColor: const AlwaysStoppedAnimation(Color(0xFF9E4A4A)),
+            if (enemy.block > 0)
+              Text(
+                '백 ${enemy.block}',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF7FA8C9)),
               ),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '${enemy.hp} / ${enemy.maxHp}',
-            style: const TextStyle(fontSize: 11),
-          ),
 
-          if (enemy.block > 0)
-            Text(
-              '백 ${enemy.block}',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF7FA8C9)),
-            ),
+            _StatusRow(statuses: enemy.statuses),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-          _StatusRow(statuses: enemy.statuses),
-        ],
+/// 각 적의 예고를 한곳에서 합친다. 피해 규칙은 다시 계산하지 않고 엔진 미리보기만
+/// 읽어, 남는 정보 영역이 다음 턴의 판단 근거가 되게 한다.
+class _EnemyThreatSummary extends StatelessWidget {
+  const _EnemyThreatSummary({required this.state});
+
+  final CombatState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final aliveIndexes = [
+      for (var i = 0; i < state.enemies.length; i++)
+        if (state.enemies[i].isAlive) i,
+    ];
+    final totalIncoming = aliveIndexes.fold(
+      0,
+      (total, index) => total + (previewEnemyDamage(state, index) ?? 0),
+    );
+
+    return Container(
+      key: const ValueKey('enemy-threat-summary'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '적 ${aliveIndexes.length}체 · 다음 피해 $totalIncoming',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.white.withValues(alpha: 0.7),
+        ),
       ),
     );
   }
@@ -1156,6 +1227,7 @@ class _CardView extends StatelessWidget {
     final block = previewBlock(state, card);
     final effects = cardEffectLabels(card, damage: damage, block: block);
     final handLabel = handCardLabel(card);
+    final nameRemainder = card.name.substring(handLabel.length);
     final effectLines = [
       effects.take(2).join(' · '),
       if (effects.length > 2) effects.skip(2).join(' · '),
@@ -1222,18 +1294,21 @@ class _CardView extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    card.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                if (nameRemainder.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      key: ValueKey('card-hand-name-remainder-${card.id}'),
+                      nameRemainder,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
             const SizedBox(height: 8),

@@ -203,7 +203,12 @@ double largestScreenBlankBand(WidgetTester tester) {
   final hand = layoutBounds(tester, find.byKey(const ValueKey('hand-area')));
   final occupied = [
     for (final enemy in ['enemy_agwi', 'enemy_wongwi', 'enemy_dokgwi'])
+      paintBounds(tester, find.byKey(ValueKey('enemy-intent-label-$enemy'))),
+    for (final enemy in ['enemy_agwi', 'enemy_wongwi', 'enemy_dokgwi'])
       paintBounds(tester, find.byKey(ValueKey('enemy-body-$enemy'))),
+    for (final enemy in ['enemy_agwi', 'enemy_wongwi', 'enemy_dokgwi'])
+      paintBounds(tester, find.byKey(ValueKey('enemy-health-$enemy'))),
+    layoutBounds(tester, find.byKey(const ValueKey('enemy-threat-summary'))),
     layoutBounds(tester, find.byKey(const ValueKey('event-strip'))),
   ]..sort((left, right) => left.top.compareTo(right.top));
 
@@ -396,6 +401,29 @@ void main() {
     }
   });
 
+  testWidgets('두 경계 기기의 적 임시 도형은 세로 1.4배를 넘지 않는다', (tester) async {
+    for (final device in _boundaryDevices) {
+      await pumpCombat(
+        tester,
+        textScale: device == _galaxyS25Ultra ? 0.9 : 1.0,
+        device: device,
+      );
+
+      try {
+        for (final enemy in ['enemy_agwi', 'enemy_wongwi', 'enemy_dokgwi']) {
+          final body = paintBounds(
+            tester,
+            find.byKey(ValueKey('enemy-body-$enemy')),
+          );
+          // 레이아웃의 부동소수점 나눗셈 오차만 허용하고 비율 상한은 고정한다.
+          expect(body.height / body.width, lessThanOrEqualTo(1.4 + 0.0001));
+        }
+      } finally {
+        await disposeTree(tester);
+      }
+    }
+  });
+
   testWidgets('두 경계 기기의 1.0×와 1.3×에서 2장과 5장 손패가 넘치지 않는다', (tester) async {
     for (final device in _boundaryDevices) {
       for (final textScale in [1.0, 1.3]) {
@@ -455,6 +483,29 @@ void main() {
         expect(label.right, lessThan(coveringCard.left));
       }
       expect(tester.takeException(), isNull);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
+  testWidgets('겹친 손패의 이름 조각을 이어 읽으면 카드 이름 한 번이다', (tester) async {
+    const card = guardianSigil;
+    await pumpCombat(
+      tester,
+      textScale: 0.9,
+      device: _galaxyS25Ultra,
+      controller: () => _FixedHandCombatController(const [card]),
+    );
+
+    try {
+      final label = tester.widget<Text>(
+        find.byKey(ValueKey('card-hand-label-${card.id}')),
+      );
+      final remainder = tester.widget<Text>(
+        find.byKey(ValueKey('card-hand-name-remainder-${card.id}')),
+      );
+
+      expect('${label.data}${remainder.data}', card.name);
     } finally {
       await disposeTree(tester);
     }
@@ -909,8 +960,7 @@ void main() {
     final attackIndex = before.hand.indexWhere((c) => c.targeted);
     expect(attackIndex, isNot(-1), reason: '시작 덱에는 공격 카드가 있다');
 
-    final cardName = before.hand[attackIndex].name;
-    await tester.tap(find.text(cardName).first);
+    await tester.tap(find.byKey(ValueKey('hand-card-$attackIndex')));
     await tester.pump(const Duration(milliseconds: 200));
 
     // 고른 상태에서는 각 적 위에 "그 적이 받을 피해"가 뜬다.
@@ -946,10 +996,10 @@ void main() {
       return;
     }
 
-    final name = before.hand[index].name;
-    await tester.tap(find.text(name).first);
+    final card = find.byKey(ValueKey('hand-card-$index'));
+    await tester.tap(card);
     await tester.pump(const Duration(milliseconds: 200));
-    await tester.tap(find.text(name).first);
+    await tester.tap(card);
     await tester.pump();
 
     expect(
