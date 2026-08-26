@@ -29,9 +29,16 @@ String statusLabel(StatusId id) => switch (id) {
 /// 적의 예고 행동 표기 (§3.1).
 ///
 /// 공격의 피해량은 여기서 만들지 않는다. 약화·취약이 걸린 실제 수치는
-/// `previewEnemyDamage`가 알고 있고, 화면은 그것을 받아 이 문자열과 합친다.
-String intentLabel(EnemyMove move) => switch (move) {
-  EnemyAttack(:final times) => times > 1 ? '공격 ×$times' : '공격',
+/// `previewEnemyDamage`가 계산한다. 이 함수는 그 값을 받아 공격 횟수와 함께
+/// 한 문자열로 배치만 하므로, 회당 피해와 배수의 순서가 다른 곳에서 갈리지 않는다.
+String intentLabel(EnemyMove move, {int? damage}) => switch (move) {
+  EnemyAttack(:final times) => _attackIntentLabel(damage: damage, times: times),
   EnemyDefend(:final block) => '방어 $block',
-  EnemyInflict(:final status, :final stacks) => '${statusLabel(status)} $stacks',
+  EnemyInflict(:final status, :final stacks) =>
+    '${statusLabel(status)} $stacks',
 };
+
+String _attackIntentLabel({required int? damage, required int times}) {
+  if (damage == null) return times > 1 ? '공격 ×$times' : '공격';
+  return times > 1 ? '공격 $damage ×$times' : '공격 $damage';
+}

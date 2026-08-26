@@ -4,6 +4,8 @@
 // 탭이 액션이 되고, 액션이 엔진을 거쳐, 바뀐 상태가 다시 화면에 나오는가.
 // 이 왕복이 끊겨 있으면 4주차에 §8.1의 질문들을 던져 볼 수조차 없다.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -131,6 +133,32 @@ void expectHandIsInsideFlow(WidgetTester tester, int cardCount) {
   }
 }
 
+void expectFanHasNoTopBlankBand(WidgetTester tester, int cardCount) {
+  final flow = layoutBounds(tester, find.byKey(const ValueKey('hand-fan')));
+  final topmostCard = [
+    for (var index = 0; index < cardCount; index++)
+      paintBounds(tester, find.byKey(ValueKey('hand-card-$index'))),
+  ].map((card) => card.top).reduce(math.min);
+
+  // 팬 높이는 회전·확대 후 카드가 실제로 차지하는 높이로 정한다. 행렬 변환의
+  // 부동소수점 오차만 1dp 허용한다. 이전 구조의 빈 띠는 이 Flow 높이의 약 25%였다.
+  expect(topmostCard - flow.top, lessThanOrEqualTo(1));
+}
+
+void expectHandIsInLowerSixtyPercent(WidgetTester tester, int cardCount) {
+  final screen = _pixel8PhysicalSize / _pixel8DevicePixelRatio;
+  final interactionBoundary = screen.height * 0.4;
+
+  for (var index = 0; index < cardCount; index++) {
+    final card = paintBounds(tester, find.byKey(ValueKey('hand-card-$index')));
+    expect(card.top, greaterThanOrEqualTo(interactionBoundary));
+  }
+  expect(
+    paintBounds(tester, find.byKey(const ValueKey('end-turn'))).top,
+    greaterThanOrEqualTo(interactionBoundary),
+  );
+}
+
 void main() {
   testWidgets('전투 화면이 손패와 적과 턴 종료 버튼을 그린다', (tester) async {
     await pumpCombat(tester);
@@ -158,6 +186,56 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await disposeTree(tester);
+  });
+
+  testWidgets('손패 팬의 위쪽 빈 띠가 남지 않는다', (tester) async {
+    await pumpCombat(
+      tester,
+      controller: () => _FixedHandCombatController(const [
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+      ]),
+    );
+
+    expectFanHasNoTopBlankBand(tester, 5);
+    await disposeTree(tester);
+  });
+
+  testWidgets('손패와 턴 종료는 화면 하단 60%에 있다 (§5.1)', (tester) async {
+    await pumpCombat(
+      tester,
+      controller: () => _FixedHandCombatController(const [
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+      ]),
+    );
+
+    expectHandIsInLowerSixtyPercent(tester, 5);
+    await disposeTree(tester);
+  });
+
+  testWidgets('Pixel 8의 1.0×와 1.3×에서 2장과 5장 손패가 넘치지 않는다', (tester) async {
+    for (final textScale in [1.0, 1.3]) {
+      for (final cardCount in [2, 5]) {
+        await pumpCombat(
+          tester,
+          textScale: textScale,
+          controller: () =>
+              _FixedHandCombatController(List.filled(cardCount, bladeOfGrudge)),
+        );
+
+        expect(tester.takeException(), isNull);
+        expectHandIsOnScreenAndClearOfEndTurn(tester, cardCount);
+        expectHandIsInsideFlow(tester, cardCount);
+        await disposeTree(tester);
+      }
+    }
   });
 
   testWidgets('주입한 시드가 초기 손패를 결정론적으로 고정한다', (tester) async {
