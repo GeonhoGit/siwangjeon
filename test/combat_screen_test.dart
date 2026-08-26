@@ -204,6 +204,46 @@ void main() {
     await disposeTree(tester);
   });
 
+  testWidgets('서로 다른 높이의 손패도 실제 배치와 팬 높이가 일치한다', (tester) async {
+    await pumpCombat(
+      tester,
+      textScale: 1.3,
+      controller: () => _FixedHandCombatController(const [
+        defend,
+        bladeOfGrudge,
+        defend,
+        bladeOfGrudge,
+        defend,
+      ]),
+    );
+
+    try {
+      final cardHeights = [
+        for (var index = 0; index < 5; index++)
+          tester
+              .renderObject<RenderBox>(find.byKey(ValueKey('hand-card-$index')))
+              .size
+              .height,
+      ];
+      expect(cardHeights.toSet().length, greaterThan(1));
+
+      final selected = paintBounds(
+        tester,
+        find.byKey(const ValueKey('hand-card-1')),
+      );
+      await tester.tapAt(selected.center);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+
+      // 높이와 실제 Flow 변환은 같은 카드별 기하값을 소비해야 한다. 한쪽만
+      // 바뀌면 높이가 다른 카드 중 가장 높은 카드에서 빈 띠 또는 클리핑이 생긴다.
+      expectHandIsInsideFlow(tester, 5);
+      expectFanHasNoTopBlankBand(tester, 5);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
   testWidgets('손패와 턴 종료는 화면 하단 60%에 있다 (§5.1)', (tester) async {
     await pumpCombat(
       tester,

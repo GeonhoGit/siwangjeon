@@ -723,13 +723,13 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
     return AnimatedBuilder(
       animation: _selectionController,
       builder: (context, child) {
-        final height = _HandFanDelegate.requiredHeight(
+        final layout = _HandFanLayout.fromSizes(
           sizes: sizes,
           selected: widget.selected,
           previousSelected: _previousSelected,
           selectionProgress: _selectionController.value,
         );
-        return SizedBox(height: height, child: child);
+        return SizedBox(height: layout.requiredHeight, child: child);
       },
       child: NotificationListener<SizeChangedLayoutNotification>(
         onNotification: (notification) {
@@ -797,6 +797,172 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   }
 }
 
+/// 손패 높이와 Flow 배치가 함께 사용하는 카드별 기하값.
+///
+/// 선택 전환 중에도 폭 예약을 고정하고, 높이 계산과 실제 변환이 같은 투영값을
+/// 소비하게 한다. 둘이 달라지면 Flow의 클리핑 경계가 카드를 자를 수 있다.
+class _HandFanLayout {
+  const _HandFanLayout._({
+    required this.cards,
+    required this.requiredHeight,
+    required this._widestReservedCard,
+    required this._maxStableSpread,
+  });
+
+  static const _edgeInset = 8.0;
+  static const _rotationPerOffset = 0.075;
+  static const _selectedScale = 1.12;
+  static const _selectedLift = 34.0;
+
+  final List<_HandFanCardGeometry> cards;
+  final double requiredHeight;
+  final double _widestReservedCard;
+  final double _maxStableSpread;
+
+  factory _HandFanLayout.fromSizes({
+    required List<Size> sizes,
+    required int? selected,
+    required int? previousSelected,
+    required double selectionProgress,
+  }) {
+    final cards = [
+      for (var i = 0; i < sizes.length; i++)
+        _HandFanCardGeometry.fromSize(
+          size: sizes[i],
+          offset: i - (sizes.length - 1) / 2,
+          selected: selected == i,
+          previouslySelected: previousSelected == i,
+          selectionProgress: selectionProgress,
+        ),
+    ];
+    final requiredHeight = cards.fold(
+      _edgeInset,
+      (height, card) => math.max(height, card.topExtent + _edgeInset),
+    );
+    final widestReservedCard = cards.fold(
+      0.0,
+      (widest, card) => math.max(widest, card.reservedWidth),
+    );
+    // 모든 카드의 최대 확대 폭을 예약해야 선택 전환 중 두 카드가 동시에
+    // 확대되어도 간격과 양끝 여백이 흔들리지 않는다.
+    final maxStableSpread = cards.fold(
+      0.0,
+      (widest, card) => math.max(widest, card.baseProjectedWidth),
+    );
+
+    return _HandFanLayout._(
+      cards: cards,
+      requiredHeight: requiredHeight,
+      widestReservedCard: widestReservedCard,
+      maxStableSpread: maxStableSpread,
+    );
+  }
+
+  List<_HandFanCardPlacement> placeIn(Size fanSize) {
+    final spread = cards.length == 1
+        ? 0.0
+        : math.min(
+            _maxStableSpread,
+            math.max(
+              0.0,
+              (fanSize.width - _widestReservedCard - _edgeInset * 2) /
+                  (cards.length - 1),
+            ),
+          );
+
+    return [
+      for (final card in cards)
+        _HandFanCardPlacement(
+          geometry: card,
+          left: (fanSize.width - card.size.width) / 2 + card.offset * spread,
+          top:
+              fanSize.height -
+              _edgeInset -
+              (card.size.height + card.projectedHeight) / 2 -
+              card.selectedLift,
+        ),
+    ];
+  }
+}
+
+class _HandFanCardGeometry {
+  const _HandFanCardGeometry._({
+    required this.size,
+    required this.offset,
+    required this.angle,
+    required this.scale,
+    required this.baseProjectedWidth,
+    required this.projectedWidth,
+    required this.projectedHeight,
+    required this.selectedLift,
+  });
+
+  final Size size;
+  final double offset;
+  final double angle;
+  final double scale;
+  final double baseProjectedWidth;
+  final double projectedWidth;
+  final double projectedHeight;
+  final double selectedLift;
+
+  factory _HandFanCardGeometry.fromSize({
+    required Size size,
+    required double offset,
+    required bool selected,
+    required bool previouslySelected,
+    required double selectionProgress,
+  }) {
+    final baseAngle = offset * _HandFanLayout._rotationPerOffset;
+    final angle = selected ? 0.0 : baseAngle;
+    final scale = selected
+        ? 1 + (_HandFanLayout._selectedScale - 1) * selectionProgress
+        : previouslySelected
+        ? _HandFanLayout._selectedScale -
+              (_HandFanLayout._selectedScale - 1) * selectionProgress
+        : 1.0;
+    final baseProjectedWidth =
+        size.width * math.cos(baseAngle.abs()) +
+        size.height * math.sin(baseAngle.abs());
+    final projectedWidth =
+        scale *
+        (size.width * math.cos(angle.abs()) +
+            size.height * math.sin(angle.abs()));
+    final projectedHeight =
+        scale *
+        (size.height * math.cos(angle.abs()) +
+            size.width * math.sin(angle.abs()));
+
+    return _HandFanCardGeometry._(
+      size: size,
+      offset: offset,
+      angle: angle,
+      scale: scale,
+      baseProjectedWidth: baseProjectedWidth,
+      projectedWidth: projectedWidth,
+      projectedHeight: projectedHeight,
+      selectedLift: selected ? _HandFanLayout._selectedLift : 0.0,
+    );
+  }
+
+  double get reservedWidth =>
+      _HandFanLayout._selectedScale * math.max(baseProjectedWidth, size.width);
+
+  double get topExtent => projectedHeight + selectedLift;
+}
+
+class _HandFanCardPlacement {
+  const _HandFanCardPlacement({
+    required this.geometry,
+    required this.left,
+    required this.top,
+  });
+
+  final _HandFanCardGeometry geometry;
+  final double left;
+  final double top;
+}
+
 class _HandFanDelegate extends FlowDelegate {
   _HandFanDelegate({
     required this.cardCount,
@@ -806,45 +972,10 @@ class _HandFanDelegate extends FlowDelegate {
   }) : _selectionProgress = selectionProgress,
        super(repaint: selectionProgress);
 
-  static const _edgeInset = 8.0;
-  static const _rotationPerOffset = 0.075;
-  static const _selectedScale = 1.12;
-  static const _selectedLift = 34.0;
-
   final int cardCount;
   final int? selected;
   final int? previousSelected;
   final Animation<double> _selectionProgress;
-
-  static double requiredHeight({
-    required List<Size> sizes,
-    required int? selected,
-    required int? previousSelected,
-    required double selectionProgress,
-  }) {
-    var height = _edgeInset;
-
-    for (var i = 0; i < sizes.length; i++) {
-      final offset = i - (sizes.length - 1) / 2;
-      final angle = selected == i ? 0.0 : offset * _rotationPerOffset;
-      final scale = selected == i
-          ? 1 + (_selectedScale - 1) * selectionProgress
-          : previousSelected == i
-          ? _selectedScale - (_selectedScale - 1) * selectionProgress
-          : 1.0;
-      final size = sizes[i];
-      final projectedHeight =
-          scale *
-          (size.height * math.cos(angle.abs()) +
-              size.width * math.sin(angle.abs()));
-      height = math.max(
-        height,
-        _edgeInset + projectedHeight + (selected == i ? _selectedLift : 0),
-      );
-    }
-
-    return height;
-  }
 
   @override
   BoxConstraints getConstraintsForChild(int index, BoxConstraints constraints) {
@@ -859,75 +990,35 @@ class _HandFanDelegate extends FlowDelegate {
     final sizes = [
       for (var i = 0; i < cardCount; i++) context.getChildSize(i)!,
     ];
-    final offsets = [
-      for (var i = 0; i < cardCount; i++) i - (cardCount - 1) / 2,
-    ];
-    final baseAngles = [
-      for (var i = 0; i < cardCount; i++) offsets[i] * _rotationPerOffset,
-    ];
-    final angles = [
-      for (var i = 0; i < cardCount; i++) selected == i ? 0.0 : baseAngles[i],
-    ];
-    final scales = [
-      for (var i = 0; i < cardCount; i++)
-        selected == i
-            ? 1 + (_selectedScale - 1) * _selectionProgress.value
-            : previousSelected == i
-            ? _selectedScale - (_selectedScale - 1) * _selectionProgress.value
-            : 1.0,
-    ];
-    final baseProjectedWidths = [
-      for (var i = 0; i < cardCount; i++)
-        sizes[i].width * math.cos(baseAngles[i].abs()) +
-            sizes[i].height * math.sin(baseAngles[i].abs()),
-    ];
-    // 선택 확대를 처음부터 예약해 간격이 애니메이션 중에도 흔들리지 않게 한다.
-    // 회전한 폭과 선택되어 회전이 0이 된 폭 중 큰 값을 쓰므로, Matrix4 확대가
-    // 자식 크기에 반영되지 않는 Flow에서도 양끝 카드의 화면 여백은 보장된다.
-    final widestReservedCard = [
-      for (var i = 0; i < cardCount; i++)
-        _selectedScale * math.max(baseProjectedWidths[i], sizes[i].width),
-    ].reduce(math.max);
-    final maxStableSpread = baseProjectedWidths.reduce(math.max);
+    final layout = _HandFanLayout.fromSizes(
+      sizes: sizes,
+      selected: selected,
+      previousSelected: previousSelected,
+      selectionProgress: _selectionProgress.value,
+    );
+    final placements = layout.placeIn(context.size);
 
-    final spread = cardCount == 1
-        ? 0.0
-        : math.min(
-            maxStableSpread,
-            math.max(
-              0.0,
-              (context.size.width - widestReservedCard - _edgeInset * 2) /
-                  (cardCount - 1),
-            ),
-          );
-
-    for (var i = 0; i < cardCount; i++) {
-      final size = sizes[i];
-      final angle = angles[i];
-      final scale = scales[i];
-      final projectedHeight =
-          scale *
-          (size.height * math.cos(angle.abs()) +
-              size.width * math.sin(angle.abs()));
-      final left = (context.size.width - size.width) / 2 + offsets[i] * spread;
-      final top =
-          context.size.height -
-          _edgeInset -
-          (size.height + projectedHeight) / 2 -
-          (selected == i ? _selectedLift : 0);
+    for (var i = 0; i < placements.length; i++) {
+      final placement = placements[i];
+      final card = placement.geometry;
 
       context.paintChild(
         i,
         transform: Matrix4.identity()
           ..translateByDouble(
-            left + size.width / 2,
-            top + size.height / 2,
+            placement.left + card.size.width / 2,
+            placement.top + card.size.height / 2,
             0,
             1,
           )
-          ..rotateZ(angle)
-          ..scaleByDouble(scale, scale, 1, 1)
-          ..translateByDouble(-size.width / 2, -size.height / 2, 0, 1),
+          ..rotateZ(card.angle)
+          ..scaleByDouble(card.scale, card.scale, 1, 1)
+          ..translateByDouble(
+            -card.size.width / 2,
+            -card.size.height / 2,
+            0,
+            1,
+          ),
       );
     }
   }
