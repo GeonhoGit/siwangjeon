@@ -1,0 +1,31 @@
+# 『시왕전』 정적 분석 규칙
+#
+# domain 레이어의 순수성은 여기서 막지 못한다 (import 경로 규칙은 lint로 표현이 안 된다).
+# 그건 test/architecture_test.dart 가 담당한다.
+
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # 전투 엔진은 sealed class에 대한 switch를 전부 처리해야 한다.
+    # 케이스를 빠뜨린 채 컴파일되면 조용히 규칙이 어긋난다.
+    missing_enum_constant_in_switch: error
+    # 데이터 주도 설계(§7.3)에서 JSON은 dynamic으로 들어온다.
+    # 캐스팅 실수를 런타임까지 끌고 가지 않는다.
+    argument_type_not_assignable: error
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_dynamic_calls
+    - prefer_final_locals
+    - prefer_final_in_for_each
+    - unawaited_futures
+    - require_trailing_commas
+    - avoid_slow_async_io
+    - cancel_subscriptions
+    - close_sinks
