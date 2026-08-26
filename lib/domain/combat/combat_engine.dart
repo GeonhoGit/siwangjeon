@@ -134,6 +134,80 @@ List<CombatAction> legalActions(CombatState state) {
   return actions;
 }
 
+/// 카드가 지금 이 대상에게 넣을 피해량. 피해 효과가 없으면 null.
+///
+/// 화면이 직접 계산하지 않게 하려고 엔진이 내준다. 기세·약화·취약과 업 비례가
+/// 전부 걸린 **최종 수치**여야 하고, 그러려면 §3.4의 규칙을 알아야 한다.
+/// UI가 그 규칙의 사본을 갖는 순간 둘은 반드시 어긋나고, 플레이어는
+/// 카드에 적힌 숫자와 실제로 들어간 숫자가 다른 게임을 하게 된다.
+///
+/// §8.1의 1번 질문에 답하려면 이 값이 특히 정확해야 한다. 업이 쌓일수록
+/// 「원한의 칼날」이 세지는 것이 **보이지 않으면** 업은 고민이 아니라
+/// 그냥 숨은 수치가 된다.
+int? previewDamage(
+  CombatState state,
+  CardDef card, {
+  int? targetIndex,
+  CombatTuning tuning = CombatTuning.m0,
+}) {
+  final sim = _Sim(state, tuning);
+  var total = 0;
+  var found = false;
+
+  for (final effect in card.effects) {
+    if (effect is! DamageEffect) continue;
+    found = true;
+
+    var value = effect.value.toDouble();
+    if (effect.scaleWith == 'karma') value += state.karma * effect.scale;
+
+    final base = value.floor();
+    final defender = (targetIndex != null && targetIndex < state.enemies.length)
+        ? state.enemies[targetIndex].statuses
+        : const <StatusId, int>{};
+
+    total += sim._attackDamage(base, state.statuses, defender);
+  }
+
+  return found ? total : null;
+}
+
+/// 카드가 지금 줄 방어도. 방어 효과가 없으면 null.
+int? previewBlock(
+  CombatState state,
+  CardDef card, {
+  CombatTuning tuning = CombatTuning.m0,
+}) {
+  var total = 0;
+  var found = false;
+
+  for (final effect in card.effects) {
+    if (effect is! BlockEffect) continue;
+    found = true;
+    total += effect.value + (state.statuses[StatusId.dexterity] ?? 0);
+  }
+
+  return found ? total : null;
+}
+
+/// 적이 예고한 공격이 지금 플레이어에게 넣을 1회 피해량.
+///
+/// §3.1은 다음 행동을 항상 미리 보여 주라고 요구한다. 그런데 보여 준 숫자가
+/// 약화·취약을 반영하지 않은 기본값이면, 플레이어는 그 예고를 근거로
+/// 방어를 계산할 수 없다. 예고의 값어치는 정확도에서 나온다.
+int? previewEnemyDamage(
+  CombatState state,
+  int enemyIndex, {
+  CombatTuning tuning = CombatTuning.m0,
+}) {
+  final enemy = state.enemies[enemyIndex];
+  final move = enemy.intent;
+  if (move is! EnemyAttack) return null;
+
+  final sim = _Sim(state, tuning);
+  return sim._attackDamage(move.damage, enemy.statuses, state.statuses);
+}
+
 /// 엔진 내부의 가변 작업대.
 ///
 /// 불변 상태를 한 단계씩 `copyWith`로 넘기면 전투 한 턴에 수십 개의 중간

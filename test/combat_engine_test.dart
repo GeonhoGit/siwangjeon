@@ -1,14 +1,17 @@
 // M0 전투 엔진 테스트 (기획서 §12-1 "카드 3장으로 순수 Dart 테스트 통과").
 //
-// 카드 정의를 `assets/data/cards.json`이 아니라 여기 직접 적어 넣는 이유는
-// `lib/data/data.dart`에 적어 둔 대로다 — JSON 로더는 카드가 20장을 넘어갈 때
-// 만든다. 3장을 위해 로더와 스키마를 먼저 만들면, 엔진 규칙이 아직 흔들리는
-// 동안 스키마부터 굳어 버린다.
+// 실제 카드 3장은 `data/m0_content.dart`에서 가져다 쓴다. 테스트가 자기만의
+// 사본을 들고 있으면 밸런스를 만졌을 때 테스트는 옛 수치를 계속 통과시키고,
+// 그 순간부터 이 파일은 게임이 아니라 과거를 검사하게 된다.
+//
+// 다만 경계 조건용 허수아비 적이나 「비싼카드」처럼 규칙만 찌르는 것들은
+// 여기서 만든다. 그건 콘텐츠가 아니라 시험 도구다.
 //
 // 이 파일은 Flutter를 쓰지 않는다. `flutter_test`의 `test`/`expect`만 빌려 쓰며,
 // 엔진이 순수 Dart라는 것(§7.2)을 확인하는 것도 이 테스트의 목적 중 하나다.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:siwangjeon/data/m0_content.dart';
 import 'package:siwangjeon/domain/combat/combat_engine.dart';
 import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
@@ -18,44 +21,6 @@ import 'package:siwangjeon/domain/model/combat_state.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/game_event.dart';
 import 'package:siwangjeon/domain/model/status.dart';
-
-// ── M0 카드 3장 ────────────────────────────────────────────
-
-/// 기본 공격. 업이 붙지 않는 "안전한" 선택지.
-const strike = CardDef(
-  id: 'card_strike',
-  name: '타격',
-  type: CardType.attack,
-  cost: 1,
-  effects: [DamageEffect(value: 6)],
-);
-
-/// 기본 방어.
-const defend = CardDef(
-  id: 'card_defend',
-  name: '수비',
-  type: CardType.skill,
-  cost: 1,
-  targeted: false,
-  effects: [BlockEffect(5)],
-);
-
-/// §7.3의 예시 카드 그대로.
-///
-/// 업을 3 쌓는 대신 업에 비례해 세지고 원한까지 남긴다.
-/// M0에서 §8.1의 1번 질문("업이 매 턴 고민을 만드는가")을 던지는 카드가 이것이다.
-const bladeOfGrudge = CardDef(
-  id: 'card_blade_of_grudge',
-  name: '원한의 칼날',
-  type: CardType.attack,
-  rarity: CardRarity.uncommon,
-  cost: 1,
-  karma: 3,
-  effects: [
-    DamageEffect(value: 6, scaleWith: 'karma', scale: 0.1),
-    ApplyStatusEffect(status: StatusId.grudge, stacks: 1),
-  ],
-);
 
 // ── 적 ────────────────────────────────────────────────────
 
@@ -689,6 +654,76 @@ void main() {
       );
 
       expect(result.state.enemies[0].hp, 46, reason: 'floor(6 * 0.75) = 4');
+    });
+  });
+
+  group('미리보기 — 화면이 규칙을 다시 계산하지 않게 한다', () {
+    test('업이 쌓이면 카드에 적히는 피해도 함께 오른다', () {
+      final low = start(deck: deckOf(bladeOfGrudge, 10), enemies: [dummy()]);
+      final high = start(
+        deck: deckOf(bladeOfGrudge, 10),
+        enemies: [dummy()],
+        karma: 70,
+      );
+
+      expect(previewDamage(low, bladeOfGrudge), 6);
+      expect(previewDamage(high, bladeOfGrudge), 13, reason: '6 + floor(70 * 0.1)');
+    });
+
+    test('미리보기와 실제로 들어가는 피해가 같다', () {
+      // 이 둘이 갈라지면 플레이어는 카드에 적힌 숫자와 다른 게임을 하게 된다.
+      final state = start(
+        deck: deckOf(bladeOfGrudge, 10),
+        enemies: [
+          Enemy(
+            id: 'e',
+            name: '허수아비',
+            hp: 60,
+            maxHp: 60,
+            pattern: const [EnemyDefend(0)],
+            statuses: const {StatusId.vulnerable: 1},
+          ),
+        ],
+        karma: 40,
+      );
+
+      final index = handIndexOf(state, bladeOfGrudge);
+      final preview = previewDamage(state, bladeOfGrudge, targetIndex: 0)!;
+      final result = applyAction(
+        state,
+        PlayCard(handIndex: index, targetIndex: 0),
+      );
+
+      expect(result.state.enemies[0].hp, 60 - preview);
+    });
+
+    test('피해가 없는 카드는 null을 준다', () {
+      final state = start(deck: deckOf(defend, 10));
+      expect(previewDamage(state, defend), isNull);
+      expect(previewBlock(state, defend), 5);
+      expect(previewBlock(state, strike), isNull);
+    });
+
+    test('적의 예고 피해는 약화를 반영한다', () {
+      final state = start(
+        deck: deckOf(strike, 10),
+        enemies: [attacker(damage: 8)],
+      );
+      expect(previewEnemyDamage(state, 0), 8);
+
+      final weakened = state.copyWith(
+        enemies: [
+          state.enemies[0].copyWith(
+            statuses: const {StatusId.weak: 1},
+          ),
+        ],
+      );
+      expect(previewEnemyDamage(weakened, 0), 6, reason: 'floor(8 * 0.75)');
+    });
+
+    test('공격이 아닌 예고에는 피해 숫자가 없다', () {
+      final state = start(deck: deckOf(strike, 10), enemies: [dummy()]);
+      expect(previewEnemyDamage(state, 0), isNull);
     });
   });
 

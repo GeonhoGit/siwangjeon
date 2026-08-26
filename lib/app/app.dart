@@ -6,6 +6,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../ui/combat_screen.dart';
+
 class SiwangjeonApp extends StatelessWidget {
   const SiwangjeonApp({super.key});
 
@@ -21,12 +23,10 @@ class SiwangjeonApp extends StatelessWidget {
           seedColor: const Color(0xFFB2332B),
           brightness: Brightness.dark,
         ),
+        scaffoldBackgroundColor: const Color(0xFF161114),
       ),
-      home: const Scaffold(
-        body: Center(
-          child: Text('시왕전'),
-        ),
-      ),
+      // M0에는 화면이 이것 하나뿐이다. 지도·보상·상점은 M1의 일이다(§8).
+      home: const CombatScreen(),
     );
   }
 }
