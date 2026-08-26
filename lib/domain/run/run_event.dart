@@ -35,12 +35,34 @@ class RunEventChoice {
     required this.id,
     required this.label,
     required this.effect,
-  });
+    this.gainedCardId,
+    this.availableKarmaBands,
+  }) : assert(
+         gainedCardId == null || gainedCardId != '',
+         '사건으로 얻는 카드 id는 비어 있을 수 없다',
+       );
 
   final String id;
   final String label;
   final RunEventEffect effect;
+
+  /// 사건에서 얻는 카드의 콘텐츠 id. 행동 로그에는 카드 목록을 복사하지 않고
+  /// [id]만 남긴 뒤, 재생 중 노드와 선택지에서 카드 인스턴스 id를 다시 만든다.
+  final String? gainedCardId;
+
+  /// 이 선택지를 제시할 업 구간. `null`은 어느 구간에서도 제시한다는 뜻이며,
+  /// 실제 구간 판정과 합법 액션 생성은 `legalRunActions()` 한 곳이 맡는다.
+  final Set<KarmaBand>? availableKarmaBands;
+
+  bool isAvailableIn(KarmaBand band) =>
+      availableKarmaBands == null || availableKarmaBands!.contains(band);
 }
+
+/// §3.3의 업 구간을 숫자 대신 의미로 콘텐츠에 전달한다.
+///
+/// 0~19/20~49/50~79/80~100의 경계값은 조정 가능한 수치이므로 `RunTuning`에
+/// 남기고, 사건 데이터는 어느 상태에서 어떤 질문을 던질지만 고른다.
+enum KarmaBand { clean, ordinary, turbid, evil }
 
 /// 데이터 콘텐츠가 참조하는 사건 결과의 종류.
 ///
@@ -53,14 +75,17 @@ enum RunEventEffect {
   shareOffering,
   takeSmugglerCoin,
   payFerryman,
+  turnAwaySmuggler,
   falsifyLedger,
   confessLedger,
+  sealLedger,
   burnAncestralAshes,
   tendAncestralAshes,
   stealWidowCandle,
   lightWidowCandle,
   drinkOblivion,
   refuseOblivion,
+  sellOblivion,
   takeWardenFavor,
   endureWardenTrial,
 }

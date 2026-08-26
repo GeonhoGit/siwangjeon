@@ -65,6 +65,41 @@ const _shopD = CardDef(
   effects: [DamageEffect(value: 4)],
 );
 
+const _eventIronGuard = CardDef(
+  id: 'card_iron_guard',
+  name: '사건 철갑 수비',
+  type: CardType.skill,
+  cost: 0,
+  targeted: false,
+  effects: [BlockEffect(4)],
+);
+
+const _eventCleanCut = CardDef(
+  id: 'card_clean_cut',
+  name: '사건 정결한 베기',
+  type: CardType.attack,
+  cost: 0,
+  effects: [DamageEffect(value: 5)],
+);
+
+const _eventSteadyBreath = CardDef(
+  id: 'card_steady_breath',
+  name: '사건 호흡 고르기',
+  type: CardType.skill,
+  cost: 0,
+  targeted: false,
+  effects: [BlockEffect(2)],
+);
+
+const _eventGreatPurification = CardDef(
+  id: 'card_great_purification',
+  name: '사건 대정화',
+  type: CardType.skill,
+  cost: 0,
+  targeted: false,
+  effects: [BlockEffect(6)],
+);
+
 const _shopTuning = RunTuning(
   nodeTypeWeights: [RunNodeWeight(RunNodeType.shop, 1)],
   shopCardChoiceCount: 3,
@@ -375,6 +410,15 @@ void main() {
   });
 
   group('M1 사건 런 재생', () {
+    test('사건 8종은 선택지 수·자원 변화·조건 구조가 서로 다르다', () {
+      final structures = {
+        for (final event in m1Events)
+          _eventResourceStructure(event, _eventTuning),
+      };
+
+      expect(structures, hasLength(m1Events.length));
+    });
+
     test('사건은 노드별 파생 reward 스트림에서 다시 고른다', () {
       final content = _content(events: m1Events);
       final entered = _enterFirstNode(
@@ -438,36 +482,36 @@ void main() {
 
     test('사건 8종의 모든 선택지는 업 축의 의도한 상태 변화를 만든다', () {
       expect(m1Events, hasLength(8));
-      expect(m1Events.every((event) => event.choices.length == 2), isTrue);
 
       for (final event in m1Events) {
-        final content = _content(
-          maxHp: 100,
-          startingKarma: 10,
-          startingMoney: 200,
-          events: [event],
-        );
-        final entered = _enterFirstNode(
-          seed: 306,
-          content: content,
-          tuning: _eventTuning,
-        );
-        final pending = replayRun(
-          entered,
-          tuning: _eventTuning,
-          content: content,
-        ).pendingEvent;
-
-        expect(pending!.event.id, event.id);
-        expect(
-          legalRunActions(
+        for (final choice in event.choices) {
+          final startingKarma = _karmaForChoice(choice);
+          final content = _content(
+            maxHp: 100,
+            startingKarma: startingKarma,
+            startingMoney: 200,
+            events: [event],
+          );
+          final entered = _enterFirstNode(
+            seed: 306,
+            content: content,
+            tuning: _eventTuning,
+          );
+          final pending = replayRun(
             entered,
             tuning: _eventTuning,
             content: content,
-          ).whereType<MoveToNode>(),
-          isEmpty,
-        );
-        for (final choice in event.choices) {
+          ).pendingEvent!;
+
+          expect(pending.event.id, event.id);
+          expect(
+            legalRunActions(
+              entered,
+              tuning: _eventTuning,
+              content: content,
+            ).whereType<MoveToNode>(),
+            isEmpty,
+          );
           final selected = applyRunAction(
             entered,
             legalRunActions(entered, tuning: _eventTuning, content: content)
@@ -484,11 +528,119 @@ void main() {
           final delta = _eventTuning.eventDeltaFor(choice.effect);
 
           expect(progress.hp, (100 + delta.hp).clamp(1, 100));
-          expect(progress.karma, 10 + delta.karma);
+          expect(progress.karma, (startingKarma + delta.karma).clamp(0, 100));
           expect(progress.money, 200 + delta.money);
           expect(progress.pendingEvent, isNull);
+          final gainedCardId = choice.gainedCardId;
+          if (gainedCardId == null) {
+            expect(progress.deckCards, hasLength(3));
+          } else {
+            expect(progress.deckCards, hasLength(4));
+            expect(
+              progress.deckCards.map((card) => card.instanceId),
+              contains('event:${pending.nodeId}:${choice.id}:$gainedCardId'),
+            );
+            expect(
+              progress.deck.map((card) => card.id),
+              contains(gainedCardId),
+            );
+          }
         }
       }
+    });
+
+    test('지옥의 장부의 업 구간 선택지는 legalRunActions가 만든다', () {
+      final ledger = m1Events.firstWhere(
+        (event) => event.id == 'event_hell_ledger',
+      );
+      final expectedChoiceIds = <int, Set<String>>{
+        0: {'falsify', 'seal'},
+        19: {'falsify', 'seal'},
+        20: {'falsify', 'seal'},
+        49: {'falsify', 'seal'},
+        50: {'confess', 'seal'},
+        79: {'confess', 'seal'},
+        80: {'confess', 'seal'},
+        100: {'confess', 'seal'},
+      };
+
+      for (final entry in expectedChoiceIds.entries) {
+        final content = _content(
+          startingKarma: entry.key,
+          startingMoney: 200,
+          events: [ledger],
+        );
+        final entered = _enterFirstNode(
+          seed: 311,
+          content: content,
+          tuning: _eventTuning,
+        );
+        final choiceIds =
+            legalRunActions(entered, tuning: _eventTuning, content: content)
+                .whereType<ChooseEventOption>()
+                .map((action) => action.choiceId)
+                .toSet();
+
+        expect(choiceIds, entry.value);
+      }
+    });
+
+    test('사건 카드 선택은 같은 액션 열과 저장 왕복에서 같은 인스턴스를 만든다', () {
+      final offering = m1Events.firstWhere(
+        (event) => event.id == 'event_hungry_ghost_offering',
+      );
+      final content = _content(events: [offering]);
+      final entered = _enterFirstNode(
+        seed: 312,
+        content: content,
+        tuning: _eventTuning,
+      );
+      final nodeId = replayRun(
+        entered,
+        tuning: _eventTuning,
+        content: content,
+      ).currentNodeId!;
+      final selected = applyRunAction(
+        entered,
+        legalRunActions(entered, tuning: _eventTuning, content: content)
+            .whereType<ChooseEventOption>()
+            .firstWhere((action) => action.choiceId == 'share'),
+        tuning: _eventTuning,
+        content: content,
+      );
+      final replayed = replayRun(
+        RunState(
+          seed: selected.seed,
+          characterId: selected.characterId,
+          actionLog: selected.actionLog,
+        ),
+        tuning: _eventTuning,
+        content: content,
+      );
+      final restored = const RunSaveCodec().decode(
+        const RunSaveCodec().encode(selected),
+      );
+      final restoredProgress = replayRun(
+        restored,
+        tuning: _eventTuning,
+        content: content,
+      );
+
+      final expectedInstanceId = 'event:$nodeId:share:card_iron_guard';
+      for (final progress in [replayed, restoredProgress]) {
+        expect(
+          progress.deckCards.map((card) => card.instanceId),
+          contains(expectedInstanceId),
+        );
+        expect(
+          progress.deck.map((card) => card.id),
+          contains('card_iron_guard'),
+        );
+      }
+      expect(restored.actionLog, hasLength(selected.actionLog.length));
+      expect(replayed.hp, restoredProgress.hp);
+      expect(replayed.karma, restoredProgress.karma);
+      expect(replayed.money, restoredProgress.money);
     });
   });
 
@@ -538,6 +690,47 @@ void main() {
   });
 }
 
+String _eventResourceStructure(RunEventDef event, RunTuning tuning) {
+  final choiceStructures = [
+    for (final choice in event.choices)
+      [
+        _changedResources(
+          tuning.eventDeltaFor(choice.effect),
+          addsCard: choice.gainedCardId != null,
+        ),
+        _availableKarmaBands(choice),
+      ].join(';'),
+  ]..sort();
+  return '${event.choices.length}:${choiceStructures.join('|')}';
+}
+
+String _changedResources(RunEventDelta delta, {required bool addsCard}) {
+  final resources = <String>[
+    if (delta.hp != 0) 'hp',
+    if (delta.karma != 0) 'karma',
+    if (delta.money != 0) 'money',
+    if (addsCard) 'deck',
+  ];
+  return resources.isEmpty ? 'none' : resources.join(',');
+}
+
+String _availableKarmaBands(RunEventChoice choice) {
+  final bands = choice.availableKarmaBands;
+  if (bands == null) return 'all';
+  return [
+    for (final band in KarmaBand.values)
+      if (bands.contains(band)) band.name,
+  ].join(',');
+}
+
+int _karmaForChoice(RunEventChoice choice) {
+  final bands = choice.availableKarmaBands;
+  if (bands == null || bands.contains(KarmaBand.clean)) return 10;
+  if (bands.contains(KarmaBand.ordinary)) return 30;
+  if (bands.contains(KarmaBand.turbid)) return 60;
+  return 90;
+}
+
 RunContent _content({
   int maxHp = 80,
   int startingKarma = 0,
@@ -549,7 +742,16 @@ RunContent _content({
   encounterPool: [_enemy('node_test_enemy_a')],
   startingKarma: startingKarma,
   startingMoney: startingMoney,
-  cardRewardPool: const [_shopA, _shopB, _shopC, _shopD],
+  cardRewardPool: const [
+    _shopA,
+    _shopB,
+    _shopC,
+    _shopD,
+    _eventIronGuard,
+    _eventCleanCut,
+    _eventSteadyBreath,
+    _eventGreatPurification,
+  ],
   shopCardPool: const [_shopA, _shopB, _shopC, _shopD],
   events: events,
 );
