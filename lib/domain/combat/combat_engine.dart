@@ -457,6 +457,7 @@ class _Sim {
 
       case GainEnergyEffect():
         energy += effect.amount;
+        if (effect.amount != 0) events.add(EnergyGained(effect.amount));
 
       case LoseHpEffect():
         _loseHp(effect.amount);
@@ -653,9 +654,14 @@ class _Sim {
   void draw(int count) {
     if (count <= 0) return;
 
+    // 상한에 걸린 카드는 덱에서 꺼내지 않는다. 버리거나 재셔플하면 덱 순서와
+    // 전투 RNG 스트림이 바뀌어 §7.4의 액션 로그 재생이 달라질 수 있다.
+    final available = tuning.maxHandSize - hand.length;
+    if (available <= 0) return;
+
     final drawn = <CardDef>[];
 
-    for (var i = 0; i < count; i++) {
+    for (var i = 0; i < count && i < available; i++) {
       if (drawPile.isEmpty) {
         // 덱이 비면 버림더미를 섞어 되돌린다. 양쪽 다 비었으면 더 못 뽑는다.
         if (discardPile.isEmpty) break;

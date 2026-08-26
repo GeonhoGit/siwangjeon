@@ -13,6 +13,7 @@ class CombatTuning {
   const CombatTuning({
     this.energyPerTurn = 3,
     this.handSize = 5,
+    this.maxHandSize = 6,
     this.maxKarma = 100,
     this.vulnerableMultiplier = 1.5,
     this.weakMultiplier = 0.75,
@@ -24,6 +25,15 @@ class CombatTuning {
 
   /// §3.1 — 턴 시작 시 손패를 채우는 목표 장수.
   final int handSize;
+
+  /// 손패가 가질 수 있는 최대 장수.
+  ///
+  /// §3.1은 턴 시작 목표인 5장만 정하고 상한은 정하지 않는다. 세로 화면의
+  /// 부채꼴은 장수가 늘수록 카드 간격이 줄어 읽기 어려워지므로, 효과 드로우로
+  /// 허용할 여유는 한 장(6장)만 둔다. Pixel 8 기준 1.0×·1.3× 폰트 배율에서
+  /// 이 장수의 카드와 턴 종료 버튼이 모두 하단 상호작용 영역 안에 남는지
+  /// 위젯 테스트로 고정한다.
+  final int maxHandSize;
 
   /// §3.3 — 업 상한.
   final int maxKarma;

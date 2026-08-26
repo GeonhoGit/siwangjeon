@@ -502,6 +502,8 @@ class _EventStrip extends StatelessWidget {
           lines.add('${who(event.targetIndex)} 피해 ${event.amount}$blocked');
         case KarmaGained():
           lines.add('업 +${event.amount}');
+        case EnergyGained():
+          lines.add('기력 +${event.amount}');
         case StatusApplied():
           lines.add(
             '${who(event.targetIndex)} ${statusLabel(event.status)} +${event.stacks}',

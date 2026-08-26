@@ -13,6 +13,7 @@ import 'package:siwangjeon/app/app.dart';
 import 'package:siwangjeon/app/combat_controller.dart';
 import 'package:siwangjeon/data/m0_content.dart';
 import 'package:siwangjeon/domain/combat/combat_engine.dart';
+import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
 
@@ -273,6 +274,28 @@ void main() {
         expect(tester.takeException(), isNull);
         expectHandIsOnScreenAndClearOfEndTurn(tester, cardCount);
         expectHandIsInsideFlow(tester, cardCount);
+        await disposeTree(tester);
+      }
+    }
+  });
+
+  testWidgets('손패 상한까지도 화면과 하단 상호작용 영역 안에 있다', (tester) async {
+    final cardCount = CombatTuning.m0.maxHandSize;
+
+    for (final textScale in [1.0, 1.3]) {
+      await pumpCombat(
+        tester,
+        textScale: textScale,
+        controller: () =>
+            _FixedHandCombatController(List.filled(cardCount, bladeOfGrudge)),
+      );
+
+      try {
+        expect(tester.takeException(), isNull);
+        expectHandIsOnScreenAndClearOfEndTurn(tester, cardCount);
+        expectHandIsInsideFlow(tester, cardCount);
+        expectHandIsInLowerSixtyPercent(tester, cardCount);
+      } finally {
         await disposeTree(tester);
       }
     }

@@ -332,6 +332,24 @@ void main() {
       expect(result.events.whereType<CardsDrawn>().single.cards.length, 2);
     });
 
+    test('손패 상한에서는 드로우가 빈자리만 채우고 나머지 덱은 보존한다', () {
+      final initial = start(deck: deckOf(strike, 10)).copyWith(
+        hand: const [drawTwo, strike, strike, strike, strike, strike],
+        drawPile: const [defend, strike],
+        discardPile: const [],
+      );
+
+      final result = applyAction(initial, const PlayCard(handIndex: 0));
+
+      expect(result.state.hand.length, CombatTuning.m0.maxHandSize);
+      expect(result.events.whereType<CardsDrawn>().single.cards, [defend]);
+      expect(
+        result.state.drawPile.map((card) => card.id),
+        [strike.id],
+        reason: '상한 때문에 못 뽑은 카드는 덱 순서 그대로 남는다',
+      );
+    });
+
     test('드로우 효과도 덱이 모자라면 버림더미를 재셔플한다', () {
       final initial = start(deck: deckOf(strike, 5)).copyWith(
         hand: const [drawThree],
@@ -424,8 +442,10 @@ void main() {
         discardPile: const [],
       );
 
-      var state = applyAction(initial, const PlayCard(handIndex: 0)).state;
+      final recovered = applyAction(initial, const PlayCard(handIndex: 0));
+      var state = recovered.state;
       expect(state.energy, 4, reason: '3 - 사용 비용 1 + 회복 2');
+      expect(recovered.events.whereType<EnergyGained>().single.amount, 2);
       expect(legalActions(state).whereType<PlayCard>().single.handIndex, 0);
 
       state = applyAction(state, const PlayCard(handIndex: 0)).state;

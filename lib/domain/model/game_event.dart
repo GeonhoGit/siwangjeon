@@ -43,6 +43,12 @@ final class BlockGained extends GameEvent {
   final int amount;
 }
 
+final class EnergyGained extends GameEvent {
+  const EnergyGained(this.amount);
+
+  final int amount;
+}
+
 final class StatusApplied extends GameEvent {
   const StatusApplied({
     required this.targetIndex,
