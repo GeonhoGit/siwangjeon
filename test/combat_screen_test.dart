@@ -73,6 +73,26 @@ class _FixedHandCombatController extends CombatController {
   }
 }
 
+class _SameCardDeckCombatController extends CombatController {
+  @override
+  CombatSession build() {
+    final result = beginCombat(
+      seed: 7,
+      hp: startingHp,
+      maxHp: startingHp,
+      deck: List.filled(10, defend),
+      enemies: defaultEncounter(),
+    );
+
+    return CombatSession(
+      seed: 7,
+      state: result.state,
+      lastEvents: result.events,
+      actionLog: const [],
+    );
+  }
+}
+
 Rect paintBounds(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);
   final box = tester.renderObject<RenderBox>(finder);
@@ -373,6 +393,46 @@ void main() {
           find.byKey(ValueKey('hand-card-$index')),
         );
         expect(middleWidths[index], closeTo(unselected.width, 0.01));
+      }
+      expect(tester.takeException(), isNull);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
+  testWidgets('같은 내용의 새 손패로 턴 종료하면 이전 선택을 축소하지 않는다', (tester) async {
+    await pumpCombat(tester, controller: _SameCardDeckCombatController.new);
+
+    try {
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(CombatScreen)),
+      );
+      final beforeHand = container.read(combatControllerProvider).state.hand;
+      final unselectedWidths = [
+        for (var index = 0; index < 5; index++)
+          paintBounds(tester, find.byKey(ValueKey('hand-card-$index'))).width,
+      ];
+      final selected = find.byKey(const ValueKey('hand-card-2'));
+      await tester.tapAt(paintBounds(tester, selected).center);
+      await tester.pump(const Duration(milliseconds: 120));
+
+      await tester.tap(find.text('턴 종료'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final afterSession = container.read(combatControllerProvider);
+      expect(afterSession.actionLog.length, 1);
+      expect(identical(afterSession.state.hand, beforeHand), isFalse);
+      for (var index = 0; index < 5; index++) {
+        expect(
+          identical(afterSession.state.hand[index], beforeHand[index]),
+          isTrue,
+        );
+        final middle = paintBounds(
+          tester,
+          find.byKey(ValueKey('hand-card-$index')),
+        );
+        expect(middle.width, closeTo(unselectedWidths[index], 0.01));
       }
       expect(tester.takeException(), isNull);
     } finally {

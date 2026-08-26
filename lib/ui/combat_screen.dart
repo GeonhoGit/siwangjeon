@@ -17,7 +17,6 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -111,6 +110,7 @@ class _CombatScreenState extends ConsumerState<CombatScreen> {
                   flex: 60,
                   child: _HandArea(
                     state: state,
+                    actionCount: session.actionLog.length,
                     selected: _selected,
                     onTapCard: _onTapCard,
                     onEndTurn: state.isOver
@@ -525,12 +525,14 @@ class _EventStrip extends StatelessWidget {
 class _HandArea extends StatelessWidget {
   const _HandArea({
     required this.state,
+    required this.actionCount,
     required this.selected,
     required this.onTapCard,
     required this.onEndTurn,
   });
 
   final CombatState state;
+  final int actionCount;
   final int? selected;
   final void Function(int index) onTapCard;
   final VoidCallback? onEndTurn;
@@ -543,7 +545,12 @@ class _HandArea extends StatelessWidget {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _Fan(state: state, selected: selected, onTapCard: onTapCard),
+            child: _Fan(
+              state: state,
+              actionCount: actionCount,
+              selected: selected,
+              onTapCard: onTapCard,
+            ),
           ),
         ),
         Padding(
@@ -614,11 +621,13 @@ class _ResourceRow extends StatelessWidget {
 class _Fan extends StatefulWidget {
   const _Fan({
     required this.state,
+    required this.actionCount,
     required this.selected,
     required this.onTapCard,
   });
 
   final CombatState state;
+  final int actionCount;
   final int? selected;
   final void Function(int index) onTapCard;
 
@@ -647,9 +656,9 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   void didUpdateWidget(covariant _Fan oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (!listEquals(widget.state.hand, oldWidget.state.hand)) {
-      // 사용한 카드가 빠진 뒤에는 같은 인덱스가 다른 카드를 가리킨다. 이전
-      // 선택의 축소를 이어 가면 그 카드가 선택된 것처럼 보이므로 즉시 버린다.
+    if (widget.actionCount != oldWidget.actionCount) {
+      // 적용된 액션은 항상 손패를 바꾼다. 같은 카드가 같은 순서로 다시 뽑혀도
+      // 인덱스는 이전 손패를 가리키므로, 이전 선택의 축소를 즉시 버린다.
       _previousSelected = null;
       _selectionController
         ..stop()
