@@ -338,6 +338,48 @@ void main() {
     }
   });
 
+  testWidgets('카드 사용으로 손패가 줄면 남은 카드가 축소 애니메이션하지 않는다', (tester) async {
+    await pumpCombat(
+      tester,
+      controller: () => _FixedHandCombatController(const [
+        defend,
+        defend,
+        defend,
+        defend,
+        defend,
+      ]),
+    );
+
+    try {
+      final selected = find.byKey(const ValueKey('hand-card-2'));
+      await tester.tapAt(paintBounds(tester, selected).center);
+      await tester.pump(const Duration(milliseconds: 120));
+
+      await tester.tapAt(paintBounds(tester, selected).center);
+      await tester.pump();
+      expect(find.byKey(const ValueKey('hand-card-4')), findsNothing);
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final middleWidths = [
+        for (var index = 0; index < 4; index++)
+          paintBounds(tester, find.byKey(ValueKey('hand-card-$index'))).width,
+      ];
+
+      await tester.pump(const Duration(milliseconds: 60));
+
+      for (var index = 0; index < 4; index++) {
+        final unselected = paintBounds(
+          tester,
+          find.byKey(ValueKey('hand-card-$index')),
+        );
+        expect(middleWidths[index], closeTo(unselected.width, 0.01));
+      }
+      expect(tester.takeException(), isNull);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
   testWidgets('Pixel 8의 1.0×와 1.3×에서 양끝 선택 손패도 화면 안에 남는다', (tester) async {
     for (final textScale in [1.0, 1.3]) {
       for (final selectedIndex in [0, 4]) {
