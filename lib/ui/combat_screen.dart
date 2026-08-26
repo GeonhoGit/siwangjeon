@@ -665,6 +665,11 @@ class _HandFanDelegate extends FlowDelegate {
   final int? selected;
 
   @override
+  BoxConstraints getConstraintsForChild(int index, BoxConstraints constraints) {
+    return constraints.loosen();
+  }
+
+  @override
   void paintChildren(FlowPaintingContext context) {
     final sizes = [
       for (var i = 0; i < cardCount; i++) context.getChildSize(i)!,
