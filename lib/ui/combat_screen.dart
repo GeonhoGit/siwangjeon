@@ -630,6 +630,7 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
   static const _selectionDuration = Duration(milliseconds: 120);
 
   late final AnimationController _selectionController;
+  int? _previousSelected;
 
   @override
   void initState() {
@@ -646,11 +647,8 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
     super.didUpdateWidget(oldWidget);
     if (widget.selected == oldWidget.selected) return;
 
-    if (widget.selected == null) {
-      _selectionController.value = 0;
-    } else {
-      _selectionController.forward(from: 0);
-    }
+    _previousSelected = oldWidget.selected;
+    _selectionController.forward(from: 0);
   }
 
   @override
@@ -675,6 +673,7 @@ class _FanState extends State<_Fan> with SingleTickerProviderStateMixin {
       delegate: _HandFanDelegate(
         cardCount: hand.length,
         selected: widget.selected,
+        previousSelected: _previousSelected,
         selectionProgress: _selectionController,
       ),
       children: [
@@ -700,6 +699,7 @@ class _HandFanDelegate extends FlowDelegate {
   _HandFanDelegate({
     required this.cardCount,
     required this.selected,
+    required this.previousSelected,
     required Animation<double> selectionProgress,
   }) : _selectionProgress = selectionProgress,
        super(repaint: selectionProgress);
@@ -711,6 +711,7 @@ class _HandFanDelegate extends FlowDelegate {
 
   final int cardCount;
   final int? selected;
+  final int? previousSelected;
   final Animation<double> _selectionProgress;
 
   @override
@@ -736,6 +737,8 @@ class _HandFanDelegate extends FlowDelegate {
       for (var i = 0; i < cardCount; i++)
         selected == i
             ? 1 + (_selectedScale - 1) * _selectionProgress.value
+            : previousSelected == i
+            ? _selectedScale - (_selectedScale - 1) * _selectionProgress.value
             : 1.0,
     ];
     final baseProjectedWidths = [

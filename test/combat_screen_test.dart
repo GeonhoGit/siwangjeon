@@ -244,6 +244,100 @@ void main() {
     }
   });
 
+  testWidgets('선택한 손패를 취소하면 120ms 동안 축소된다', (tester) async {
+    await pumpCombat(
+      tester,
+      controller: () => _FixedHandCombatController(const [
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+      ]),
+    );
+
+    try {
+      final card = find.byKey(const ValueKey('hand-card-2'));
+      final unselected = paintBounds(tester, card);
+      await tester.tapAt(unselected.center);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+
+      final selected = paintBounds(tester, card);
+      await tester.tapAt(selected.center);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final middle = paintBounds(tester, card);
+      expect(middle.width, greaterThan(unselected.width));
+      expect(middle.width, lessThan(selected.width));
+      expect(tester.takeException(), isNull);
+      expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+      expectHandIsInsideFlow(tester, 5);
+
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final after = paintBounds(tester, card);
+      expect(after.width, closeTo(unselected.width, 0.01));
+      expect(after.height, closeTo(unselected.height, 0.01));
+      expect(tester.takeException(), isNull);
+      expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+      expectHandIsInsideFlow(tester, 5);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
+  testWidgets('다른 손패를 선택하면 이전 카드가 축소되고 새 카드가 확대된다', (tester) async {
+    await pumpCombat(
+      tester,
+      controller: () => _FixedHandCombatController(const [
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+        bladeOfGrudge,
+      ]),
+    );
+
+    try {
+      final first = find.byKey(const ValueKey('hand-card-2'));
+      final second = find.byKey(const ValueKey('hand-card-4'));
+      await tester.tapAt(paintBounds(tester, first).center);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 120));
+
+      final firstSelected = paintBounds(tester, first);
+      await tester.tapAt(paintBounds(tester, second).center);
+      await tester.pump();
+
+      final secondUnselected = paintBounds(tester, second);
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final firstMiddle = paintBounds(tester, first);
+      final secondMiddle = paintBounds(tester, second);
+      expect(firstMiddle.width, greaterThan(firstSelected.width / 1.12));
+      expect(firstMiddle.width, lessThan(firstSelected.width));
+      expect(secondMiddle.width, greaterThan(secondUnselected.width));
+      expect(secondMiddle.width, lessThan(secondUnselected.width * 1.12));
+      expect(tester.takeException(), isNull);
+      expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+      expectHandIsInsideFlow(tester, 5);
+
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final firstAfter = paintBounds(tester, first);
+      final secondAfter = paintBounds(tester, second);
+      expect(firstAfter.width, closeTo(firstSelected.width / 1.12, 0.01));
+      expect(secondAfter.width, closeTo(secondUnselected.width * 1.12, 0.01));
+      expect(tester.takeException(), isNull);
+      expectHandIsOnScreenAndClearOfEndTurn(tester, 5);
+      expectHandIsInsideFlow(tester, 5);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
   testWidgets('Pixel 8의 1.0×와 1.3×에서 양끝 선택 손패도 화면 안에 남는다', (tester) async {
     for (final textScale in [1.0, 1.3]) {
       for (final selectedIndex in [0, 4]) {
