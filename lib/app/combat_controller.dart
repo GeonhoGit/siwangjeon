@@ -10,6 +10,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'run_content_provider.dart';
 import '../data/m0_content.dart';
 import '../domain/combat/combat_engine.dart';
 import '../domain/model/combat_action.dart';
@@ -50,12 +51,12 @@ class CombatController extends Notifier<CombatSession> {
   @override
   CombatSession build() => _newRun(_nextSeed());
 
-  static CombatSession _newRun(int seed) {
+  CombatSession _newRun(int seed) {
     final result = beginCombat(
       seed: seed,
       hp: startingHp,
       maxHp: startingHp,
-      deck: starterDeck,
+      deck: ref.read(runContentProvider).deck,
       enemies: defaultEncounter(),
     );
 

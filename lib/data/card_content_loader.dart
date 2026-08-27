@@ -40,20 +40,37 @@ class CardContentLoader {
     return List.unmodifiable(cards);
   }
 
-  CardDef _card(Map<String, Object?> map) => CardDef(
-    id: _string(map, 'id'),
-    name: _string(map, 'name'),
-    type: _cardType(_string(map, 'type')),
-    rarity: map['rarity'] == null
-        ? CardRarity.common
-        : _rarity(_string(map, 'rarity')),
-    cost: _int(map, 'cost'),
-    karma: map['karma'] == null ? 0 : _int(map, 'karma'),
-    targeted: map['targeted'] is bool ? map['targeted']! as bool : true,
-    effects: [
-      for (final raw in _list(map, 'effects')) _effect(_map(raw, '카드 효과')),
-    ],
-  );
+  CardDef _card(Map<String, Object?> map) {
+    if (!map.containsKey('upgrade')) {
+      throw const FormatException('카드 JSON에는 upgrade를 명시해야 한다');
+    }
+
+    return CardDef(
+      id: _string(map, 'id'),
+      name: _string(map, 'name'),
+      type: _cardType(_string(map, 'type')),
+      rarity: map['rarity'] == null
+          ? CardRarity.common
+          : _rarity(_string(map, 'rarity')),
+      cost: _int(map, 'cost'),
+      karma: map['karma'] == null ? 0 : _int(map, 'karma'),
+      targeted: map['targeted'] is bool ? map['targeted']! as bool : true,
+      effects: [
+        for (final raw in _list(map, 'effects')) _effect(_map(raw, '카드 효과')),
+      ],
+      upgrade: _upgrade(map['upgrade']),
+    );
+  }
+
+  CardUpgrade? _upgrade(Object? value) {
+    if (value == null) return null;
+    final map = _map(value, '카드 강화');
+    return CardUpgrade(
+      effects: [
+        for (final raw in _list(map, 'effects')) _effect(_map(raw, '카드 강화 효과')),
+      ],
+    );
+  }
 
   CardEffect _effect(Map<String, Object?> map) {
     final op = _string(map, 'op');

@@ -1,408 +1,49 @@
-/// M0 원본 카드 콘텐츠와 M1 호환 조립기 (기획서 §7.3, §12-2).
+/// M1 런 콘텐츠 조립기와 M0 적 콘텐츠 (기획서 §7.3, §12-2).
 ///
-/// 카드가 20장을 넘은 M1 런타임은 `assets/data/cards.json`을 로드한다. 이 파일의
-/// 상수는 기존 순수 Dart 전투 테스트와 이름별 테스트 도구가 같은 카드 정의를
-/// 가리키도록 남긴 호환 표면이고, 실제 앱은 [m1RunContentFromCards]에 로더 결과를
-/// 넣는다.
-///
-/// M0의 목적은 진도가 아니라 **의사결정**이다(§8.1). 그래서 이 파일의 목표는
-/// 콘텐츠 물량이 아니라, §8.1의 세 질문에 답할 수 있는 최소 구성이다.
-/// 특히 1번 질문("업이 매 턴 고민을 만드는가")을 던지려면 덱 안에
-/// 「원한의 칼날」처럼 **업을 대가로 세지는 선택지**가 반드시 있어야 한다.
+/// 카드 정의는 이 파일에 두지 않는다. 앱과 테스트 모두 `cards.json`을 같은
+/// [CardContentLoader.decode] 경로로 해석하고, 여기에는 시작 덱·보상 풀의 id만 둔다.
 library;
 
-import '../domain/effect/card_effect.dart';
-import '../domain/combat/tuning.dart';
-import '../domain/model/card.dart';
 import '../domain/model/boss.dart';
+import '../domain/model/card.dart';
 import '../domain/model/enemy.dart';
 import '../domain/model/status.dart';
 import '../domain/run/run_content.dart';
 import 'm1_events.dart';
 import 'm1_relics.dart';
 
-// ── M1 카드 23장 (§3.3, §3.5) ───────────────────────────────
-
-/// 기본 공격. 업을 내지 않아 심판을 미루는 대신 피해도 평범한 안전 선택이다.
-const strike = CardDef(
-  id: 'card_strike',
-  name: '타격',
-  type: CardType.attack,
-  cost: 1,
-  effects: [DamageEffect(value: 6)],
-);
-
-/// 기본 방어. 업을 늘리지 않고 다음 적 턴을 견뎌 정화·고업 카드의 여지를 만든다.
-const defend = CardDef(
-  id: 'card_defend',
-  name: '수비',
-  type: CardType.skill,
-  cost: 1,
-  targeted: false,
-  effects: [BlockEffect(5)],
-);
-
-/// §7.3의 예시 카드 그대로.
-///
-/// 업을 3 쌓는 대신 업에 비례해 세지고 원한까지 남긴다.
-/// M0에서 §8.1의 1번 질문을 실제로 던지는 카드가 이것이다.
-const bladeOfGrudge = CardDef(
-  id: 'card_blade_of_grudge',
-  name: '원한의 칼날',
-  type: CardType.attack,
-  rarity: CardRarity.uncommon,
-  cost: 1,
-  karma: 3,
-  effects: [
-    DamageEffect(value: 6, scaleWith: 'karma', scale: 0.1),
-    ApplyStatusEffect(status: StatusId.grudge, stacks: 1),
-  ],
-);
-
-/// 업 2를 내고 즉시 10 피해를 얻는다. 심판을 앞당겨 지금의 처치를 서두르는 거래다.
-const sinfulSlash = CardDef(
-  id: 'card_sinful_slash',
-  name: '악업의 베기',
-  type: CardType.attack,
-  rarity: CardRarity.uncommon,
-  cost: 1,
-  karma: 2,
-  effects: [DamageEffect(value: 10)],
-);
-
-/// 업 1을 내고 독 3을 남긴다. 당장 덜 때리는 대신 이후 턴의 피해를 미리 사는 거래다.
-const venomVerdict = CardDef(
-  id: 'card_venom_verdict',
-  name: '독사의 판결',
-  type: CardType.attack,
-  cost: 1,
-  karma: 1,
-  effects: [
-    DamageEffect(value: 4),
-    ApplyStatusEffect(status: StatusId.poison, stacks: 3),
-  ],
-);
-
-/// 업 2를 내고 취약 2를 건다. 이어지는 공격을 크게 만들지만 심판을 뒤로 미루지 못한다.
-const inquisitionBrand = CardDef(
-  id: 'card_inquisition_brand',
-  name: '추궁의 낙인',
-  type: CardType.attack,
-  rarity: CardRarity.uncommon,
-  cost: 1,
-  karma: 2,
-  effects: [
-    DamageEffect(value: 5),
-    ApplyStatusEffect(status: StatusId.vulnerable, stacks: 2),
-  ],
-);
-
-/// 업 없이 두 번 나눈 피해를 준다. 방어도에는 약하지만 업을 피하며 압박을 이어 가는 선택이다.
-const twinVerdict = CardDef(
-  id: 'card_twin_verdict',
-  name: '연속 단죄',
-  type: CardType.attack,
-  rarity: CardRarity.uncommon,
-  cost: 1,
-  effects: [DamageEffect(value: 4), DamageEffect(value: 4)],
-);
-
-/// 업 대신 약화 2로 다음 공격을 낮춘다. 지금 밀어붙이지 않고 정화할 시간을 사는 공격이다.
-const suppressingCut = CardDef(
-  id: 'card_suppressing_cut',
-  name: '제압 베기',
-  type: CardType.attack,
-  cost: 1,
-  effects: [
-    DamageEffect(value: 5),
-    ApplyStatusEffect(status: StatusId.weak, stacks: 2),
-  ],
-);
-
-/// 업을 내지 않는 8 피해다. 높은 보상은 없지만 심판 수치를 유지하며 마무리하는 기준선이다.
-const cleanCut = CardDef(
-  id: 'card_clean_cut',
-  name: '정결한 베기',
-  type: CardType.attack,
-  cost: 1,
-  effects: [DamageEffect(value: 8)],
-);
-
-/// 업을 내지 않는 큰 방어다. 심판을 키우지 않고 강한 예고를 막아 정화 선택을 보존한다.
-const ironGuard = CardDef(
-  id: 'card_iron_guard',
-  name: '철갑 수비',
-  type: CardType.skill,
-  cost: 1,
-  targeted: false,
-  effects: [BlockEffect(10)],
-);
-
-/// 작은 방어 뒤 한 장을 뽑는다. 카드를 낸 뒤 빈 한 칸만 채워 손패 상한 낭비 없이 선택지를 넓힌다.
-const steadyBreath = CardDef(
-  id: 'card_steady_breath',
-  name: '호흡 고르기',
-  type: CardType.skill,
-  cost: 1,
-  targeted: false,
-  effects: [BlockEffect(3), DrawCardsEffect(1)],
-);
-
-/// 방어와 기력 1을 함께 준다. 업 없이 다음 고비용 지속 카드에 기력을 넘기는 연결 카드다.
-const recoveredEnergy = CardDef(
-  id: 'card_recovered_energy',
-  name: '되찾은 기력',
-  type: CardType.skill,
-  cost: 1,
-  targeted: false,
-  effects: [BlockEffect(3), GainEnergyEffect(1)],
-);
-
-/// 방어와 굳음 1을 남긴다. 업을 내지 않는 장기 방어로 정화 뒤에도 버틸 수 있게 한다.
-const guardianSigil = CardDef(
-  id: 'card_guardian_sigil',
-  name: '수호의 각인',
-  type: CardType.skill,
-  rarity: CardRarity.uncommon,
-  cost: 1,
-  targeted: false,
-  effects: [
-    BlockEffect(5),
-    ApplyStatusEffect(
-      status: StatusId.dexterity,
-      stacks: 1,
-      target: EffectTarget.self,
-    ),
-  ],
-);
-
-/// 업 2를 내고 큰 방어를 얻는다. 지금 생존을 사는 대신 나중의 심판을 정화로 갚아야 한다.
-const greedyBarrier = CardDef(
-  id: 'card_greedy_barrier',
-  name: '탐욕의 장벽',
-  type: CardType.skill,
-  rarity: CardRarity.uncommon,
-  cost: 1,
-  karma: 2,
-  targeted: false,
-  effects: [BlockEffect(11)],
-);
-
-/// 작은 방어와 적 약화 2를 준다. 업을 쌓지 않고 다수의 다음 공격을 낮춰 정화할 턴을 만든다.
-const weakeningGlance = CardDef(
-  id: 'card_weakening_glance',
-  name: '외면의 약화',
-  type: CardType.skill,
-  cost: 1,
-  effects: [
-    BlockEffect(3),
-    ApplyStatusEffect(status: StatusId.weak, stacks: 2),
-  ],
-);
-
-/// 업 3을 내고 기세 2를 전투 내내 남긴다. 빠른 처치와 더 높은 심판을 맞바꾸는 지속 투자다.
-const hellfireMomentum = CardDef(
-  id: 'card_hellfire_momentum',
-  name: '업화의 기세',
-  type: CardType.power,
-  rarity: CardRarity.rare,
-  cost: 1,
-  karma: 3,
-  targeted: false,
-  effects: [
-    BlockEffect(2),
-    ApplyStatusEffect(
-      status: StatusId.strength,
-      stacks: 2,
-      target: EffectTarget.self,
-    ),
-  ],
-);
-
-/// 업 없이 굳음 2를 지속시킨다. 심판 대신 방어 누적으로 긴 전투와 정화를 선택하는 투자다.
-const ironVow = CardDef(
-  id: 'card_iron_vow',
-  name: '강철의 서약',
-  type: CardType.power,
-  rarity: CardRarity.uncommon,
-  cost: 2,
-  targeted: false,
-  effects: [
-    BlockEffect(2),
-    ApplyStatusEffect(
-      status: StatusId.dexterity,
-      stacks: 2,
-      target: EffectTarget.self,
-    ),
-  ],
-);
-
-/// 업 1을 내고 기세·굳음 1을 모두 남긴다. 작은 심판 부담으로 공격과 방어를 함께 굳히는 절충이다.
-const clingingOath = CardDef(
-  id: 'card_clinging_oath',
-  name: '집착의 맹세',
-  type: CardType.power,
-  rarity: CardRarity.rare,
-  cost: 2,
-  karma: 1,
-  targeted: false,
-  effects: [
-    BlockEffect(2),
-    ApplyStatusEffect(
-      status: StatusId.strength,
-      stacks: 1,
-      target: EffectTarget.self,
-    ),
-    ApplyStatusEffect(
-      status: StatusId.dexterity,
-      stacks: 1,
-      target: EffectTarget.self,
-    ),
-  ],
-);
-
-/// 체력 5를 내고 업 8을 씻는다. 심판을 늦추기 위해 즉시 생존 자원을 포기하는 정화다.
-const confession = CardDef(
-  id: 'card_confession',
-  name: '고해',
-  type: CardType.skill,
-  cost: 1,
-  targeted: false,
-  effects: [BlockEffect(2), LoseHpEffect(5), ChangeKarmaEffect(-8)],
-);
-
-/// 한 턴의 기력 3을 모두 내고 업 18을 씻는다. 공격 기회를 통째로 포기하는 큰 정화다.
-const greatPurification = CardDef(
-  id: 'card_great_purification',
-  name: '대정화',
-  type: CardType.skill,
-  rarity: CardRarity.rare,
-  cost: 3,
-  targeted: false,
-  effects: [BlockEffect(6), ChangeKarmaEffect(-18)],
-);
-
-/// 업을 서둘러 씻는 대신 이번·다음 턴의 화력을 낮춘다. 고업 심판을 피하려고
-/// 공격 기회를 미루는 선택이라, 업 축에서 "지금 밀어붙일 것인가"를 남긴다.
-const fastingVow = CardDef(
-  id: 'card_fasting_vow',
-  name: '금식의 서약',
-  type: CardType.skill,
-  cost: 0,
-  targeted: false,
-  effects: [
-    ApplyStatusEffect(
-      status: StatusId.weak,
-      stacks: PurificationCardTuning.fastingWeak,
-      target: EffectTarget.self,
-    ),
-    ChangeKarmaEffect(-PurificationCardTuning.fastingCleanse),
-  ],
-);
-
-/// 업을 씻는 대신 적의 다음 타격을 더 아프게 맞는다. 심판 리스크를 낮출수록
-/// 현재 전투의 생존 리스크가 커져, 정화를 무료 회피 버튼으로 만들지 않는다.
-const thinVeil = CardDef(
-  id: 'card_thin_veil',
-  name: '엷은 장막',
-  type: CardType.skill,
-  cost: 0,
-  targeted: false,
-  effects: [
-    ApplyStatusEffect(
-      status: StatusId.vulnerable,
-      stacks: PurificationCardTuning.veilVulnerable,
-      target: EffectTarget.self,
-    ),
-    ChangeKarmaEffect(-PurificationCardTuning.veilCleanse),
-  ],
-);
-
-/// 이미 쌓은 방어를 태워 업을 씻는다. 막아 둔 다음 공격을 포기하고 심판을
-/// 가볍게 만드는 선택이므로, 업 축에서 당장의 안전과 미래의 심판을 맞바꾼다.
-const shatteredWard = CardDef(
-  id: 'card_shattered_ward',
-  name: '파계의 수비',
-  type: CardType.skill,
-  cost: 0,
-  targeted: false,
-  effects: [
-    SpendBlockEffect(PurificationCardTuning.shatteredWardBlockCost),
-    ChangeKarmaEffect(-PurificationCardTuning.shatteredWardCleanse),
-  ],
-);
-
-/// M0 카드 풀. 전투 규칙이 흔들리는 동안에는 JSON 스키마가 아니라 Dart 상수로 둔다(§7.3).
-const m0Cards = <CardDef>[
-  strike,
-  bladeOfGrudge,
-  sinfulSlash,
-  venomVerdict,
-  inquisitionBrand,
-  twinVerdict,
-  suppressingCut,
-  cleanCut,
-  defend,
-  ironGuard,
-  steadyBreath,
-  recoveredEnergy,
-  guardianSigil,
-  greedyBarrier,
-  weakeningGlance,
-  hellfireMomentum,
-  ironVow,
-  clingingOath,
-  confession,
-  greatPurification,
-  fastingVow,
-  thinVeil,
-  shatteredWard,
+const _starterCardIds = <String>[
+  'card_strike',
+  'card_strike',
+  'card_defend',
+  'card_defend',
+  'card_blade_of_grudge',
+  'card_sinful_slash',
+  'card_greedy_barrier',
+  'card_confession',
 ];
 
-/// 무관의 시작 덱 8장 (§2.1).
-///
-/// 기본 공격·방어를 두 장씩 두고, 업을 내는 공격 둘과 업 방어 하나를 넣는다.
-/// 여기에 체력을 대가로 업을 씻는 [confession]을 함께 넣어 §8.1의 첫 질문이
-/// 첫 전투부터 성립하게 한다. 즉시 처치·생존을 위해 업을 쌓을지, 정화를 위해
-/// 체력과 한 장을 쓸지 선택하게 하며, 나머지 M0 카드는 보상으로 발견한다.
-const starterDeck = <CardDef>[
-  strike,
-  strike,
-  defend,
-  defend,
-  bladeOfGrudge,
-  sinfulSlash,
-  greedyBarrier,
-  confession,
+const _cardRewardIds = <String>[
+  'card_venom_verdict',
+  'card_inquisition_brand',
+  'card_twin_verdict',
+  'card_suppressing_cut',
+  'card_clean_cut',
+  'card_iron_guard',
+  'card_steady_breath',
+  'card_recovered_energy',
+  'card_guardian_sigil',
+  'card_weakening_glance',
+  'card_hellfire_momentum',
+  'card_iron_vow',
+  'card_clinging_oath',
+  'card_great_purification',
+  'card_fasting_vow',
+  'card_thin_veil',
+  'card_shattered_ward',
 ];
 
-/// 시작 덱에 없는 M0 카드는 모두 전투 카드 보상에서만 만난다.
-const cardRewardPool = <CardDef>[
-  venomVerdict,
-  inquisitionBrand,
-  twinVerdict,
-  suppressingCut,
-  cleanCut,
-  ironGuard,
-  steadyBreath,
-  recoveredEnergy,
-  guardianSigil,
-  weakeningGlance,
-  hellfireMomentum,
-  ironVow,
-  clingingOath,
-  greatPurification,
-  fastingVow,
-  thinVeil,
-  shatteredWard,
-];
-
-// ── 적 ────────────────────────────────────────────────────
-
-/// 아귀(餓鬼) — 때리고, 막고, 크게 때린다.
-///
-/// 3턴 주기로 예고가 바뀌므로 §3.1의 "다음 행동은 항상 미리 표시"가
-/// 실제로 판단에 쓰이는지 볼 수 있다. 3번째 턴의 9는 방어 없이 맞으면 아프다.
+/// 아귀(餓鬼) — 세 번 주기로 공격·방어·강공을 반복한다.
 Enemy agwi() => const Enemy(
   id: 'enemy_agwi',
   name: '아귀',
@@ -411,10 +52,7 @@ Enemy agwi() => const Enemy(
   pattern: [EnemyAttack(6), EnemyDefend(5), EnemyAttack(9)],
 );
 
-/// 원귀(冤鬼) — 약화를 걸고 잘게 두 번 때린다.
-///
-/// 연타는 방어도를 잘게 깎으므로 "방어를 쌓을 것인가 밀어붙일 것인가"의
-/// 답이 아귀와 달라진다. 적 두 종류가 같은 답을 요구하면 전투가 단조로워진다.
+/// 원귀(冤鬼) — 약화를 걸고 약한 2연타를 반복한다.
 Enemy wongwi() => const Enemy(
   id: 'enemy_wongwi',
   name: '원귀',
@@ -423,11 +61,7 @@ Enemy wongwi() => const Enemy(
   pattern: [EnemyInflict(StatusId.weak, 1), EnemyAttack(4, times: 2)],
 );
 
-/// 독귀(毒鬼) — 막아도 사라지지 않는 중독을 남긴 뒤 버틴다.
-///
-/// 중독은 플레이어 턴 시작에 방어도를 무시하므로, 이 적의 질문은 "긴 전투를
-/// 감수할 것인가, 지금 밀어붙여 중독 누적을 끊을 것인가"다. 아귀의 큰 한 방과
-/// 달리 단순 방어만으로는 답이 되지 않는다.
+/// 독귀(毒鬼) — 중독, 방어, 공격을 반복한다.
 Enemy dokgwi() => const Enemy(
   id: 'enemy_dokgwi',
   name: '독귀',
@@ -436,11 +70,7 @@ Enemy dokgwi() => const Enemy(
   pattern: [EnemyInflict(StatusId.poison, 2), EnemyDefend(4), EnemyAttack(7)],
 );
 
-/// 야차(夜叉) — 자기 기세를 쌓은 뒤 두 번 때린다.
-///
-/// 다음 예고가 기세 강화면 약화로 피해를 낮출지, 강화된 연타 전에 먼저 처치할지를
-/// 묻는다. 원귀가 플레이어의 공격을 약하게 만드는 적이라면, 야차는 적 공격 자체를
-/// 상태 카드로 꺾어야 하는 적이다.
+/// 야차(夜叉) — 스스로 기세를 쌓은 뒤 두 번 공격한다.
 Enemy yacha() => const Enemy(
   id: 'enemy_yacha',
   name: '야차',
@@ -453,10 +83,7 @@ Enemy yacha() => const Enemy(
   ],
 );
 
-/// 나찰(羅刹) — 방어를 먼저 쌓고 취약 뒤에 큰 한 방을 예고한다.
-///
-/// 이 적의 질문은 "방어도에 공격을 버릴 것인가, 독·원한을 심어 넘길 것인가"다.
-/// 이어지는 취약+강공은 아귀처럼 바로 막기보다, 약화나 큰 방어를 미리 준비하게 한다.
+/// 나찰(羅刹) — 방어, 취약, 강공을 반복한다.
 Enemy nachal() => const Enemy(
   id: 'enemy_nachal',
   name: '나찰',
@@ -469,12 +96,7 @@ Enemy nachal() => const Enemy(
   ],
 );
 
-/// 염라대왕 — 49일의 업을 장부대로 읽는 1막 시왕.
-///
-/// 1페이즈의 공격·방어·취약은 청정과 평범 모두에게 기준 심판을 견디며 싸울
-/// 시간을 준다. 2페이즈의 연타·약화·강공은 "지금의 강한 업 카드"가 만든
-/// 악업이 처음부터 맞닥뜨리는 압박이다. 탁함의 독 부과는 아직 2페이즈로
-/// 떨어지지는 않았어도, 쌓인 업이 전투 시간을 늘려 값을 치르게 한다.
+/// 염라대왕 — 49일의 업을 심판하는 첫 시왕 보스다.
 BossDef yeomra() => BossDef(
   enemy: Enemy(
     id: 'boss_yeomra',
@@ -503,29 +125,16 @@ BossDef yeomra() => BossDef(
       ),
     ],
   ),
-  // 탁함의 추가 순환은 즉시 2페이즈에 빠지지는 않아도, 지속 피해로 장기전을
-  // 강요한다. 따라서 업 50~79의 "추가 패턴"이 단순 체력 증가와 겹치지 않는다.
   turbidExtraMove: const EnemyInflict(StatusId.poison, 2),
 );
 
-/// M0의 기본 조우. §8.1의 2번 질문("세로 화면에서 카드 5장 + 적이
-/// 답답하지 않은가")은 적 3마리를 실제로 보아야 물을 수 있다. 중독·약화·큰 예고를
-/// 함께 둬 한 화면에서 서로 다른 다음 행동을 읽게 하되, 체력 합계는 M0 한 전투가
-/// 2~3분을 넘기지 않도록 58로 제한한다.
+/// M0 기본 조우는 세 적을 올려 세로 화면의 밀도를 검증한다.
 List<Enemy> defaultEncounter() => [agwi(), wongwi(), dokgwi()];
-
-/// M1 런 재생에 주입하는 M0 콘텐츠.
-///
-/// `defaultEncounter()`의 세 적은 M0에서 검증한 기본 조합으로 유지하고, 남은
-/// 두 적까지 풀에 넣어 런 노드가 encounter 스트림으로 구성을 뽑는다. 카드 보상이
-/// 생겼으므로 시작 덱 밖의 [cardRewardPool]와 M1 사건 8종도 함께 주입한다.
-RunContent m0RunContent() => m1RunContentFromCards(m0Cards);
 
 /// JSON 로더가 만든 버전 고정 카드 목록으로 M1 런 콘텐츠를 조립한다.
 ///
-/// 시작 덱·보상 풀의 **카드 정의**를 다시 복사하지 않고 기존 id 배열만 기준으로
-/// 잡는다. 그러면 런타임 콘텐츠와 테스트가 서로 다른 수치의 같은 카드를 품는
-/// 일을 막을 수 있다.
+/// id 목록만 이 파일에 남겨 같은 카드 수치를 다시 적지 않는다. 따라서 런타임
+/// 콘텐츠와 테스트가 수치가 다른 동명 카드를 가질 수 없다.
 RunContent m1RunContentFromCards(List<CardDef> cards) {
   final cardsById = {for (final card in cards) card.id: card};
 
@@ -539,14 +148,14 @@ RunContent m1RunContentFromCards(List<CardDef> cards) {
 
   return RunContent(
     maxHp: startingHp,
-    deck: [for (final card in starterDeck) byId(card.id)],
+    deck: [for (final id in _starterCardIds) byId(id)],
     encounterPool: [...defaultEncounter(), yacha(), nachal()],
     bossPool: [yeomra()],
-    cardRewardPool: [for (final card in cardRewardPool) byId(card.id)],
+    cardRewardPool: [for (final id in _cardRewardIds) byId(id)],
     events: m1Events,
     relicRewardPool: m1Relics,
   );
 }
 
-/// 플레이어 시작 체력 (§3.2 — 체력 범위 0~80).
+/// 플레이어 시작 체력 (기획서 §3.2의 체력 범위 0~80).
 const startingHp = 80;

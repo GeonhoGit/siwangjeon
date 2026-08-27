@@ -8,7 +8,6 @@ import 'dart:collection';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/m0_content.dart';
 import '../data/run_storage.dart';
 import '../domain/combat/combat_engine.dart';
 import '../domain/model/combat_action.dart';
@@ -18,6 +17,9 @@ import '../domain/run/run_content.dart';
 import '../domain/run/run_engine.dart';
 import '../domain/run/run_state.dart';
 import 'combat_controller.dart';
+import 'run_content_provider.dart';
+
+export 'run_content_provider.dart' show runContentProvider;
 
 /// 새 런의 시드를 만드는 바깥 레이어의 의존성이다.
 ///
@@ -26,10 +28,6 @@ import 'combat_controller.dart';
 final runSeedFactoryProvider = Provider<int Function()>((ref) {
   return () => DateTime.now().millisecondsSinceEpoch;
 });
-
-/// M1에서 사용하는 버전 고정 런 콘텐츠다. domain은 data 레이어를 모르므로
-/// 이 경계에서 주입한다.
-final runContentProvider = Provider<RunContent>((ref) => m0RunContent());
 
 /// 앱 시작점에서 이미 복원한 런을 전달하는 경계다.
 ///
