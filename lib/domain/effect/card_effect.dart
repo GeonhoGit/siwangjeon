@@ -18,11 +18,7 @@ sealed class CardEffect {
 
 /// `{"op": "damage", "value": 6, "scaleWith": "karma", "scale": 0.1}`
 final class DamageEffect extends CardEffect {
-  const DamageEffect({
-    required this.value,
-    this.scaleWith,
-    this.scale = 0,
-  });
+  const DamageEffect({required this.value, this.scaleWith, this.scale = 0});
 
   final int value;
 
@@ -51,6 +47,14 @@ final class BlockEffect extends CardEffect {
   const BlockEffect(this.value);
 
   final int value;
+}
+
+/// 현재 방어도를 지불한다. 정화가 체력·기력 외의 자원을 대가로 삼을 수 있게
+/// 하되, 실제 차감과 사용 가능 여부는 전투 엔진만 판단한다.
+final class SpendBlockEffect extends CardEffect {
+  const SpendBlockEffect(this.amount) : assert(amount > 0);
+
+  final int amount;
 }
 
 /// 업(業)을 즉시 증감한다. 음수는 §3.3의 정화에 쓴다.

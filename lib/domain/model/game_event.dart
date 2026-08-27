@@ -43,6 +43,13 @@ final class BlockGained extends GameEvent {
   final int amount;
 }
 
+/// 카드의 대가로 실제 지불한 방어도.
+final class BlockSpent extends GameEvent {
+  const BlockSpent(this.amount);
+
+  final int amount;
+}
+
 final class EnergyGained extends GameEvent {
   const EnergyGained(this.amount);
 

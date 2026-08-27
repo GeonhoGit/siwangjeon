@@ -1,8 +1,9 @@
-/// M0 임시 콘텐츠 (기획서 §12-2).
+/// M0 원본 카드 콘텐츠와 M1 호환 조립기 (기획서 §7.3, §12-2).
 ///
-/// `assets/data/*.json`이 아니라 Dart 상수인 이유는 `data.dart`에 적어 둔
-/// 그대로다 — JSON 로더는 카드가 20장을 넘어갈 때 만든다. 지금 스키마를
-/// 먼저 굳히면, 엔진 규칙이 아직 흔들리는 동안 로더가 그 흔들림을 따라다녀야 한다.
+/// 카드가 20장을 넘은 M1 런타임은 `assets/data/cards.json`을 로드한다. 이 파일의
+/// 상수는 기존 순수 Dart 전투 테스트와 이름별 테스트 도구가 같은 카드 정의를
+/// 가리키도록 남긴 호환 표면이고, 실제 앱은 [m1RunContentFromCards]에 로더 결과를
+/// 넣는다.
 ///
 /// M0의 목적은 진도가 아니라 **의사결정**이다(§8.1). 그래서 이 파일의 목표는
 /// 콘텐츠 물량이 아니라, §8.1의 세 질문에 답할 수 있는 최소 구성이다.
@@ -11,6 +12,7 @@
 library;
 
 import '../domain/effect/card_effect.dart';
+import '../domain/combat/tuning.dart';
 import '../domain/model/card.dart';
 import '../domain/model/boss.dart';
 import '../domain/model/enemy.dart';
@@ -19,7 +21,7 @@ import '../domain/run/run_content.dart';
 import 'm1_events.dart';
 import 'm1_relics.dart';
 
-// ── M0 카드 20장 (§12-1) ─────────────────────────────────────
+// ── M1 카드 23장 (§3.3, §3.5) ───────────────────────────────
 
 /// 기본 공격. 업을 내지 않아 심판을 미루는 대신 피해도 평범한 안전 선택이다.
 const strike = CardDef(
@@ -280,6 +282,56 @@ const greatPurification = CardDef(
   effects: [BlockEffect(6), ChangeKarmaEffect(-18)],
 );
 
+/// 업을 서둘러 씻는 대신 이번·다음 턴의 화력을 낮춘다. 고업 심판을 피하려고
+/// 공격 기회를 미루는 선택이라, 업 축에서 "지금 밀어붙일 것인가"를 남긴다.
+const fastingVow = CardDef(
+  id: 'card_fasting_vow',
+  name: '금식의 서약',
+  type: CardType.skill,
+  cost: 0,
+  targeted: false,
+  effects: [
+    ApplyStatusEffect(
+      status: StatusId.weak,
+      stacks: PurificationCardTuning.fastingWeak,
+      target: EffectTarget.self,
+    ),
+    ChangeKarmaEffect(-PurificationCardTuning.fastingCleanse),
+  ],
+);
+
+/// 업을 씻는 대신 적의 다음 타격을 더 아프게 맞는다. 심판 리스크를 낮출수록
+/// 현재 전투의 생존 리스크가 커져, 정화를 무료 회피 버튼으로 만들지 않는다.
+const thinVeil = CardDef(
+  id: 'card_thin_veil',
+  name: '엷은 장막',
+  type: CardType.skill,
+  cost: 0,
+  targeted: false,
+  effects: [
+    ApplyStatusEffect(
+      status: StatusId.vulnerable,
+      stacks: PurificationCardTuning.veilVulnerable,
+      target: EffectTarget.self,
+    ),
+    ChangeKarmaEffect(-PurificationCardTuning.veilCleanse),
+  ],
+);
+
+/// 이미 쌓은 방어를 태워 업을 씻는다. 막아 둔 다음 공격을 포기하고 심판을
+/// 가볍게 만드는 선택이므로, 업 축에서 당장의 안전과 미래의 심판을 맞바꾼다.
+const shatteredWard = CardDef(
+  id: 'card_shattered_ward',
+  name: '파계의 수비',
+  type: CardType.skill,
+  cost: 0,
+  targeted: false,
+  effects: [
+    SpendBlockEffect(PurificationCardTuning.shatteredWardBlockCost),
+    ChangeKarmaEffect(-PurificationCardTuning.shatteredWardCleanse),
+  ],
+);
+
 /// M0 카드 풀. 전투 규칙이 흔들리는 동안에는 JSON 스키마가 아니라 Dart 상수로 둔다(§7.3).
 const m0Cards = <CardDef>[
   strike,
@@ -302,6 +354,9 @@ const m0Cards = <CardDef>[
   clingingOath,
   confession,
   greatPurification,
+  fastingVow,
+  thinVeil,
+  shatteredWard,
 ];
 
 /// 무관의 시작 덱 8장 (§2.1).
@@ -337,6 +392,9 @@ const cardRewardPool = <CardDef>[
   ironVow,
   clingingOath,
   greatPurification,
+  fastingVow,
+  thinVeil,
+  shatteredWard,
 ];
 
 // ── 적 ────────────────────────────────────────────────────
@@ -461,15 +519,34 @@ List<Enemy> defaultEncounter() => [agwi(), wongwi(), dokgwi()];
 /// `defaultEncounter()`의 세 적은 M0에서 검증한 기본 조합으로 유지하고, 남은
 /// 두 적까지 풀에 넣어 런 노드가 encounter 스트림으로 구성을 뽑는다. 카드 보상이
 /// 생겼으므로 시작 덱 밖의 [cardRewardPool]와 M1 사건 8종도 함께 주입한다.
-RunContent m0RunContent() => RunContent(
-  maxHp: startingHp,
-  deck: starterDeck,
-  encounterPool: [...defaultEncounter(), yacha(), nachal()],
-  bossPool: [yeomra()],
-  cardRewardPool: cardRewardPool,
-  events: m1Events,
-  relicRewardPool: m1Relics,
-);
+RunContent m0RunContent() => m1RunContentFromCards(m0Cards);
+
+/// JSON 로더가 만든 버전 고정 카드 목록으로 M1 런 콘텐츠를 조립한다.
+///
+/// 시작 덱·보상 풀의 **카드 정의**를 다시 복사하지 않고 기존 id 배열만 기준으로
+/// 잡는다. 그러면 런타임 콘텐츠와 테스트가 서로 다른 수치의 같은 카드를 품는
+/// 일을 막을 수 있다.
+RunContent m1RunContentFromCards(List<CardDef> cards) {
+  final cardsById = {for (final card in cards) card.id: card};
+
+  CardDef byId(String id) {
+    final card = cardsById[id];
+    if (card == null) {
+      throw ArgumentError.value(id, 'cards', 'M1 콘텐츠에 필요한 카드가 없다');
+    }
+    return card;
+  }
+
+  return RunContent(
+    maxHp: startingHp,
+    deck: [for (final card in starterDeck) byId(card.id)],
+    encounterPool: [...defaultEncounter(), yacha(), nachal()],
+    bossPool: [yeomra()],
+    cardRewardPool: [for (final card in cardRewardPool) byId(card.id)],
+    events: m1Events,
+    relicRewardPool: m1Relics,
+  );
+}
 
 /// 플레이어 시작 체력 (§3.2 — 체력 범위 0~80).
 const startingHp = 80;
