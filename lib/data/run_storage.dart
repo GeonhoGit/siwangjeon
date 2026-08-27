@@ -120,6 +120,11 @@ class RunSaveCodec {
       'nodeId': nodeId,
       'choice': choice.name,
     },
+    EnhanceWildCampCard(:final nodeId, :final cardInstanceId) => {
+      'type': 'enhanceWildCampCard',
+      'nodeId': nodeId,
+      'cardInstanceId': cardInstanceId,
+    },
     ChooseEventOption(:final nodeId, :final choiceId) => {
       'type': 'chooseEventOption',
       'nodeId': nodeId,
@@ -184,6 +189,12 @@ class RunSaveCodec {
       return ChooseWildCampOption(
         nodeId: _int(map, 'nodeId'),
         choice: _wildCampChoice(_string(map, 'choice')),
+      );
+    }
+    if (type == 'enhanceWildCampCard') {
+      return EnhanceWildCampCard(
+        nodeId: _int(map, 'nodeId'),
+        cardInstanceId: _string(map, 'cardInstanceId'),
       );
     }
     if (type == 'chooseEventOption') {

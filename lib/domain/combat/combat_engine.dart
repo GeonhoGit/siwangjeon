@@ -124,7 +124,9 @@ List<CombatAction> legalActions(CombatState state) {
 
   for (var i = 0; i < state.hand.length; i++) {
     final card = state.hand[i];
-    if (card.cost > state.energy) continue;
+    if (!_canPayCardCosts(card, energy: state.energy, block: state.block)) {
+      continue;
+    }
 
     if (card.targeted) {
       for (var t = 0; t < state.enemies.length; t++) {
@@ -139,6 +141,16 @@ List<CombatAction> legalActions(CombatState state) {
 
   return actions;
 }
+
+bool _canPayCardCosts(
+  CardDef card, {
+  required int energy,
+  required int block,
+}) =>
+    card.cost <= energy &&
+    card.effects.whereType<SpendBlockEffect>().every(
+      (effect) => block >= effect.amount,
+    );
 
 /// 카드가 지금 이 대상에게 넣을 피해량. 피해 효과가 없으면 null.
 ///
@@ -304,10 +316,8 @@ class _Sim {
 
     final card = hand[action.handIndex];
 
-    if (card.cost > energy) {
-      throw IllegalActionError(
-        '${card.name}은 기력 ${card.cost}이 필요하나 $energy뿐이다',
-      );
+    if (!_canPayCardCosts(card, energy: energy, block: block)) {
+      throw IllegalActionError('${card.name}의 기력 또는 방어도 대가를 낼 수 없다');
     }
 
     int? target;
@@ -473,6 +483,10 @@ class _Sim {
         events.add(
           BlockGained(targetIndex: CombatState.playerIndex, amount: gained),
         );
+
+      case SpendBlockEffect():
+        block -= effect.amount;
+        events.add(BlockSpent(effect.amount));
 
       case ChangeKarmaEffect():
         _changeKarma(effect.amount);

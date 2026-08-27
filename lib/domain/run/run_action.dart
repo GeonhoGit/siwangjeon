@@ -96,9 +96,12 @@ final class LeaveShop extends RunAction {
   final int nodeId;
 }
 
-/// 야장의 두 선택지. 강화는 카드 모델·저장 참조까지 확장하는 후속 단계라 이번
-/// 범위에서는 넣지 않는다. enum은 저장할 때 문자열로 바꾼다.
-enum WildCampChoice { rest, repent }
+/// 야장의 세 선택지.
+///
+/// §2.1은 휴식·강화를, §3.3은 참회를 각각 야장의 수단으로 적는다. 둘 중 하나를
+/// 빼면 기획서의 다른 줄을 깨므로, M1은 세 선택지를 함께 두기로 해석한다.
+/// enum은 저장할 때 문자열 이름으로 바뀐다.
+enum WildCampChoice { rest, repent, enhance }
 
 /// 야장에서 휴식 또는 참회를 고른다.
 final class ChooseWildCampOption extends RunAction {
@@ -106,6 +109,21 @@ final class ChooseWildCampOption extends RunAction {
 
   final int nodeId;
   final WildCampChoice choice;
+}
+
+/// 야장에서 강화할 덱 카드 한 장을 확정한다.
+///
+/// `cardId`는 중복 「타격」을 구분하지 못한다. 상점 제거와 같은 결정론적
+/// [cardInstanceId]를 기록하면 저장은 계속 `{seed, characterId, actionLog}`뿐이고,
+/// 재생 중에도 정확히 그 한 장만 강화할 수 있다.
+final class EnhanceWildCampCard extends RunAction {
+  const EnhanceWildCampCard({
+    required this.nodeId,
+    required this.cardInstanceId,
+  });
+
+  final int nodeId;
+  final String cardInstanceId;
 }
 
 /// 노드별로 다시 뽑은 사건의 선택지 하나를 고른다.

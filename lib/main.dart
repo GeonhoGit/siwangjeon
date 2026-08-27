@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
 import 'app/run_controller.dart';
-import 'data/m0_content.dart';
+import 'data/card_content_loader.dart';
 import 'data/run_storage.dart';
 
 Future<void> main() async {
@@ -14,15 +14,17 @@ Future<void> main() async {
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   final storage = FileRunStorage();
+  final content = await loadM1RunContent();
   final restored = await RunController.loadStoredRun(
     storage: storage,
-    content: m0RunContent(),
+    content: content,
   );
 
   runApp(
     ProviderScope(
       overrides: [
         runStorageProvider.overrideWithValue(storage),
+        runContentProvider.overrideWithValue(content),
         runInitialStateProvider.overrideWithValue(restored),
       ],
       child: const SiwangjeonApp(),

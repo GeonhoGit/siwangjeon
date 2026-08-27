@@ -2,6 +2,7 @@
 library;
 
 import '../combat/combat_engine.dart';
+import '../combat/card_enhancement.dart';
 import '../combat/tuning.dart';
 import '../model/boss.dart';
 import '../model/card.dart';
@@ -170,10 +171,24 @@ class RelicReward {
 /// 덱 안의 물리적 카드 한 장. id 중복이 가능한 [card]와 달리 [instanceId]는
 /// 런 액션 로그를 재생했을 때 같은 한 장을 가리킨다.
 class RunDeckCard {
-  const RunDeckCard({required this.instanceId, required this.card});
+  RunDeckCard({
+    required this.instanceId,
+    required CardDef card,
+    this.isEnhanced = false,
+  }) : baseCard = card,
+       card = isEnhanced ? enhancedCard(card) : card;
 
   final String instanceId;
+
+  /// 콘텐츠 원본. 강화 재생은 이 정의에서 다시 출발하므로, 같은 액션 로그를
+  /// 여러 번 적용해도 `+` 수치가 누적되지 않는다.
+  final CardDef baseCard;
+
+  /// 전투·상점 표시가 읽는 현재 카드 정의. 강화 여부는 저장하지 않고 이 카드의
+  /// [isEnhanced]와 야장 액션 로그에서 매번 복원된다.
   final CardDef card;
+
+  final bool isEnhanced;
 }
 
 /// 아직 떠나지 않은 상점의 남은 상품. 가격은 [RunTuning]에 있고, 목록은
@@ -186,11 +201,17 @@ class ShopInventory {
   final List<CardDef> cards;
 }
 
-/// 야장 선택 대기 상태. 강화는 후속 카드 모델 단계에서 붙일 자리다.
+/// 야장 선택 대기 상태.
 class WildCampVisit {
-  const WildCampVisit({required this.nodeId});
+  const WildCampVisit({required this.nodeId, this.choice});
 
   final int nodeId;
+
+  /// 강화가 선택된 뒤에는 대상 카드가 확정될 때까지 노드를 떠나지 않는다. 이
+  /// 중간 상태는 저장하지 않고 바로 앞 [ChooseWildCampOption]으로 재생한다.
+  final WildCampChoice? choice;
+
+  bool get isChoosingEnhancement => choice == WildCampChoice.enhance;
 }
 
 /// 사건 선택지 하나가 화면에 보여 줄 결과.
@@ -306,6 +327,16 @@ List<RunAction> legalRunActions(
 
   final wildCamp = progress.pendingWildCamp;
   if (wildCamp != null) {
+    if (wildCamp.isChoosingEnhancement) {
+      return [
+        for (final card in progress.deckCards)
+          if (!card.isEnhanced)
+            EnhanceWildCampCard(
+              nodeId: wildCamp.nodeId,
+              cardInstanceId: card.instanceId,
+            ),
+      ];
+    }
     return [
       ChooseWildCampOption(
         nodeId: wildCamp.nodeId,
@@ -316,6 +347,11 @@ List<RunAction> legalRunActions(
         ChooseWildCampOption(
           nodeId: wildCamp.nodeId,
           choice: WildCampChoice.repent,
+        ),
+      if (progress.deckCards.any((card) => !card.isEnhanced))
+        ChooseWildCampOption(
+          nodeId: wildCamp.nodeId,
+          choice: WildCampChoice.enhance,
         ),
     ];
   }
@@ -712,7 +748,43 @@ RunProgress replayRun(
             }
             karma -= tuning.wildCampRepentKarmaCleanse;
             money -= tuning.wildCampRepentMoneyCost;
+          case WildCampChoice.enhance:
+            if (!deckCards.any((card) => !card.isEnhanced)) {
+              throw IllegalRunActionError('강화할 수 있는 카드가 없다');
+            }
+            // 상점의 LeaveShop처럼 선택 경계를 독립 액션으로 남긴다. 대상 카드
+            // 하나를 고르기 전에는 이동을 막아, 저장 재생도 같은 야장 흐름을
+            // 정확히 복원한다.
+            pendingWildCamp = WildCampVisit(nodeId: nodeId, choice: choice);
+            continue;
         }
+        pendingWildCamp = null;
+
+      case EnhanceWildCampCard(:final nodeId, :final cardInstanceId):
+        if (outcome != null) {
+          throw IllegalRunActionError('끝난 런에는 카드를 강화할 수 없다');
+        }
+        final wildCamp = pendingWildCamp;
+        if (wildCamp == null ||
+            wildCamp.nodeId != nodeId ||
+            !wildCamp.isChoosingEnhancement) {
+          throw IllegalRunActionError('현재 야장의 강화 선택과 맞지 않는 카드다');
+        }
+        final index = deckCards.indexWhere(
+          (card) => card.instanceId == cardInstanceId,
+        );
+        if (index < 0) {
+          throw IllegalRunActionError('덱에 없는 카드 인스턴스를 강화할 수 없다');
+        }
+        final card = deckCards[index];
+        if (card.isEnhanced) {
+          throw IllegalRunActionError('한 카드는 한 번만 강화할 수 있다');
+        }
+        deckCards[index] = RunDeckCard(
+          instanceId: card.instanceId,
+          card: card.baseCard,
+          isEnhanced: true,
+        );
         pendingWildCamp = null;
 
       case ChooseEventOption(:final nodeId, :final choiceId):
@@ -1254,6 +1326,17 @@ bool _sameRunAction(RunAction left, RunAction right) => switch ((left, right)) {
     ChooseWildCampOption(nodeId: final rightNodeId, choice: final rightChoice),
   ) =>
     leftNodeId == rightNodeId && leftChoice == rightChoice,
+  (
+    EnhanceWildCampCard(
+      nodeId: final leftNodeId,
+      cardInstanceId: final leftCardInstanceId,
+    ),
+    EnhanceWildCampCard(
+      nodeId: final rightNodeId,
+      cardInstanceId: final rightCardInstanceId,
+    ),
+  ) =>
+    leftNodeId == rightNodeId && leftCardInstanceId == rightCardInstanceId,
   (
     ChooseEventOption(nodeId: final leftNodeId, choiceId: final leftChoiceId),
     ChooseEventOption(nodeId: final rightNodeId, choiceId: final rightChoiceId),
