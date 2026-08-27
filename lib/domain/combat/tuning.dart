@@ -18,6 +18,23 @@ class CombatTuning {
     this.vulnerableMultiplier = 1.5,
     this.weakMultiplier = 0.75,
     this.karmaPerGrudgeTick = 20,
+    this.karmaPerRelicStrength = 25,
+    this.pureRelicDexterity = 1,
+    this.openingRelicDrawCount = 1,
+    this.openingRelicCleanse = 3,
+    this.pureRelicTurnBlock = 6,
+    this.ordinaryRelicTurnBlock = 4,
+    this.turbidRelicTurnBlock = 2,
+    this.turbidRelicEnergy = 1,
+    this.karmaCardBonusDamage = 3,
+    this.cleanCardBlock = 2,
+    this.unblockedDamageVulnerable = 1,
+    this.unblockedDamageKarma = 1,
+    this.karmaPerRelicBurst = 20,
+    this.turnEndRelicCleanse = 1,
+    this.enemyDeathRelicHeal = 2,
+    this.enemyDeathRelicBlock = 5,
+    this.turbidRelicDamageReduction = 1,
   });
 
   /// §3.2 — 매 턴 회복되는 기력(氣). 기획서가 정한 값이다.
@@ -51,6 +68,24 @@ class CombatTuning {
   /// 이 환산이 너무 후하면 업이 순수한 이득이 되어 §8.1의 1번 질문이
   /// 자동으로 실패한다.
   final int karmaPerGrudgeTick;
+
+  final int karmaPerRelicStrength;
+  final int pureRelicDexterity;
+  final int openingRelicDrawCount;
+  final int openingRelicCleanse;
+  final int pureRelicTurnBlock;
+  final int ordinaryRelicTurnBlock;
+  final int turbidRelicTurnBlock;
+  final int turbidRelicEnergy;
+  final int karmaCardBonusDamage;
+  final int cleanCardBlock;
+  final int unblockedDamageVulnerable;
+  final int unblockedDamageKarma;
+  final int karmaPerRelicBurst;
+  final int turnEndRelicCleanse;
+  final int enemyDeathRelicHeal;
+  final int enemyDeathRelicBlock;
+  final int turbidRelicDamageReduction;
 
   static const CombatTuning m0 = CombatTuning();
 }

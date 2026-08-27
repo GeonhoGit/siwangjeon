@@ -7,6 +7,7 @@ library;
 import '../rng/rng.dart';
 import 'card.dart';
 import 'enemy.dart';
+import 'relic.dart';
 import 'status.dart';
 
 /// 전투가 끝난 방식.
@@ -29,6 +30,7 @@ class CombatState {
     required this.discardPile,
     required this.enemies,
     required this.rng,
+    this.relics = const [],
     this.activePowers = const [],
     this.statuses = const {},
     this.outcome,
@@ -76,6 +78,9 @@ class CombatState {
   /// 전투 내부용 난수기 (§7.4의 [RngStream.combat]).
   final Rng rng;
 
+  /// 런에서 얻은 유물. 전투 규칙은 엔진만 해석한다.
+  final List<RelicDef> relics;
+
   /// 전투가 끝났으면 그 결과. 진행 중이면 null.
   final CombatOutcome? outcome;
 
@@ -100,6 +105,7 @@ class CombatState {
     List<Enemy>? enemies,
     Map<StatusId, int>? statuses,
     Rng? rng,
+    List<RelicDef>? relics,
     CombatOutcome? outcome,
   }) {
     return CombatState(
@@ -116,6 +122,7 @@ class CombatState {
       enemies: enemies ?? this.enemies,
       statuses: statuses ?? this.statuses,
       rng: rng ?? this.rng,
+      relics: relics ?? this.relics,
       outcome: outcome ?? this.outcome,
     );
   }
