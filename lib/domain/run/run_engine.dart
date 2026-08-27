@@ -131,11 +131,17 @@ class CardReward {
 
 /// 정예 승리 뒤 선택을 기다리는 유물 후보.
 class RelicReward {
-  RelicReward({required this.nodeId, required List<RelicDef> relics})
-    : relics = List.unmodifiable(relics);
+  RelicReward({
+    required this.nodeId,
+    required List<RelicDef> relics,
+    this.karmaGained = 0,
+  }) : relics = List.unmodifiable(relics);
 
   final int nodeId;
   final List<RelicDef> relics;
+
+  /// 정예 승리로 실제로 오른 업. 상한에 닿았으면 튜닝 값보다 작을 수 있다.
+  final int karmaGained;
 }
 
 /// 덱 안의 물리적 카드 한 장. id 중복이 가능한 [card]와 달리 [instanceId]는
@@ -502,6 +508,7 @@ RunProgress replayRun(
             combat = null;
             final node = map.nodeById(nodeId);
             if (node.type == RunNodeType.elite) {
+              final karmaBeforeReward = karma;
               karma = (karma + tuning.eliteKarmaReward).clamp(
                 0,
                 CombatTuning.m0.maxKarma,
@@ -511,6 +518,7 @@ RunProgress replayRun(
                 node: node,
                 content: content!,
                 tuning: tuning,
+                karmaGained: karma - karmaBeforeReward,
               );
             } else {
               money += moneyRewardForNode(node, tuning: tuning);
@@ -860,6 +868,7 @@ RelicReward relicRewardForNode({
   required RunNode node,
   required RunContent content,
   RunTuning tuning = RunTuning.m1,
+  int karmaGained = 0,
 }) {
   if (node.type != RunNodeType.elite) {
     throw ArgumentError.value(node, 'node', '정예 노드만 유물 보상을 가진다');
@@ -890,7 +899,7 @@ RelicReward relicRewardForNode({
     rng = next;
     relics.add(available.removeAt(index));
   }
-  return RelicReward(nodeId: node.id, relics: relics);
+  return RelicReward(nodeId: node.id, relics: relics, karmaGained: karmaGained);
 }
 
 /// 현재 상점의 서로 다른 상품 후보를 `RngStream.reward`에서 뽑는다.

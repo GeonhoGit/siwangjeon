@@ -38,6 +38,10 @@ void main() {
 
       expect(progress.money, _tuning.baseMoneyReward * 2);
       expect(progress.karma, _tuning.eliteKarmaReward);
+      expect(
+        progress.pendingRelicReward!.karmaGained,
+        _tuning.eliteKarmaReward,
+      );
       expect(progress.pendingCardReward, isNull);
       expect(progress.pendingRelicReward!.relics, hasLength(3));
       expect(
@@ -173,7 +177,9 @@ void main() {
       final content = _content(startingKarma: 99);
       final won = _winElite(seed: 35, content: content);
 
-      expect(replayRun(won, tuning: _tuning, content: content).karma, 100);
+      final progress = replayRun(won, tuning: _tuning, content: content);
+      expect(progress.karma, 100);
+      expect(progress.pendingRelicReward!.karmaGained, 1);
     });
 
     test('빈 유물 풀로 정예에 진입하면 즉시 명확하게 거부한다', () {

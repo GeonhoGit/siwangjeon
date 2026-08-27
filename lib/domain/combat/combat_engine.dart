@@ -724,8 +724,12 @@ class _Sim {
   }
 
   void _healPlayer(int amount) {
-    final healedHp = (hp + amount).clamp(0, maxHp);
-    if (healedHp > hp) hp = healedHp;
+    if (amount <= 0 || hp >= maxHp) return;
+
+    final missingHp = maxHp - hp;
+    final gained = amount < missingHp ? amount : missingHp;
+    hp += gained;
+    events.add(HpGained(gained));
   }
 
   /// 적의 공격 피해와 예고가 함께 쓰는, 방어도 전 최종 피해량.
