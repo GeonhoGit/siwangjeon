@@ -35,6 +35,23 @@ void main() {
       ]);
     });
 
+    test('기존 다섯 적은 페이즈가 없어 예전 순환을 그대로 쓴다', () {
+      for (final enemy in [agwi(), wongwi(), dokgwi(), yacha(), nachal()]) {
+        expect(enemy.phaseCount, 1, reason: enemy.name);
+        expect(enemy.activePattern, enemy.pattern, reason: enemy.name);
+
+        var state = _startAgainst(enemy);
+        for (final expected in enemy.pattern) {
+          expect(
+            state.enemies.single.intent.runtimeType,
+            expected.runtimeType,
+            reason: enemy.name,
+          );
+          state = applyAction(state, const EndTurn()).state;
+        }
+      }
+    });
+
     test('독귀는 중독 뒤 방어, 야차는 기세 뒤 연타, 나찰은 방어 뒤 취약을 예고한다', () {
       var poisonState = _startAgainst(dokgwi());
       expect(poisonState.enemies.single.intent, isA<EnemyInflict>());
