@@ -69,6 +69,8 @@ List<String> cardEffectLabels(CardDef card, {int? damage, int? block}) {
       case DamageEffect():
       case BlockEffect():
         continue;
+      case SpendBlockEffect():
+        labels.add('방어 -${effect.amount}');
       case ApplyStatusEffect():
         labels.add('${statusLabel(effect.status)} ${effect.stacks}');
       case ChangeKarmaEffect():

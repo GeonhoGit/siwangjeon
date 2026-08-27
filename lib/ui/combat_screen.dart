@@ -656,6 +656,7 @@ class _EventStrip extends StatelessWidget {
           lines.add('덱 섞음 ${event.count}');
         case CardPlayed():
         case BlockGained():
+        case BlockSpent():
         case CardsDrawn():
         case TurnEnded():
         case TurnStarted():

@@ -19,6 +19,7 @@ import '../domain/run/judgment_preview.dart';
 import '../domain/run/run_map.dart';
 import '../domain/run/run_node_type.dart';
 import '../domain/run/run_tuning.dart';
+import '../domain/run/wild_camp_preview.dart';
 import 'combat_screen.dart';
 import 'labels.dart';
 import 'relic_inventory.dart';
@@ -790,11 +791,42 @@ class _WildCampScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = session.progress;
+    final wildCamp = progress.pendingWildCamp!;
     final optionsByChoice = {
       for (final action
           in session.legalActions.whereType<ChooseWildCampOption>())
         action.choice: action,
     };
+    final enhancementsByCardInstanceId = {
+      for (final action
+          in session.legalActions.whereType<EnhanceWildCampCard>())
+        action.cardInstanceId: action,
+    };
+
+    if (wildCamp.isChoosingEnhancement) {
+      return _NodeChoiceScaffold(
+        screenKey: const ValueKey('wild-camp-enhance-screen'),
+        title: wildCampEnhancementTitle,
+        status: wildCampEnhancementStatus,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          children: [
+            const Text(wildCampEnhancementPrompt),
+            const SizedBox(height: 12),
+            for (final deckCard in progress.deckCards)
+              if (enhancementsByCardInstanceId[deckCard.instanceId]
+                  case final action?) ...[
+                _WildCampEnhanceCardButton(
+                  deckCard: deckCard,
+                  action: action,
+                  onChoose: onChoose,
+                ),
+                const SizedBox(height: 12),
+              ],
+          ],
+        ),
+      );
+    }
 
     return _NodeChoiceScaffold(
       screenKey: const ValueKey('wild-camp-screen'),
@@ -804,24 +836,71 @@ class _WildCampScreen extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
-          const Text('오늘의 대가를 고르세요'),
+          const Text(wildCampChoicePrompt),
           const SizedBox(height: 12),
           _WildCampOptionButton(
             choice: WildCampChoice.rest,
-            title: '휴식',
-            detail: '체력 +${RunTuning.m1.wildCampRestHeal}',
+            title: wildCampOptionPreview(WildCampChoice.rest).title,
+            detail: wildCampOptionPreview(WildCampChoice.rest).detail,
             action: optionsByChoice[WildCampChoice.rest],
             onChoose: onChoose,
           ),
           const SizedBox(height: 12),
           _WildCampOptionButton(
             choice: WildCampChoice.repent,
-            title: '참회',
-            detail:
-                '업 -${RunTuning.m1.wildCampRepentKarmaCleanse} · 노잣돈 -${RunTuning.m1.wildCampRepentMoneyCost}',
+            title: wildCampOptionPreview(WildCampChoice.repent).title,
+            detail: wildCampOptionPreview(WildCampChoice.repent).detail,
             action: optionsByChoice[WildCampChoice.repent],
             onChoose: onChoose,
           ),
+          const SizedBox(height: 12),
+          _WildCampOptionButton(
+            choice: WildCampChoice.enhance,
+            title: wildCampOptionPreview(WildCampChoice.enhance).title,
+            detail: wildCampOptionPreview(WildCampChoice.enhance).detail,
+            action: optionsByChoice[WildCampChoice.enhance],
+            onChoose: onChoose,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WildCampEnhanceCardButton extends StatelessWidget {
+  const _WildCampEnhanceCardButton({
+    required this.deckCard,
+    required this.action,
+    required this.onChoose,
+  });
+
+  final RunDeckCard deckCard;
+  final EnhanceWildCampCard action;
+  final ValueChanged<RunAction> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectLines = _cardEffectLines(deckCard.card);
+    return OutlinedButton(
+      key: ValueKey('wild-camp-enhance-${deckCard.instanceId}'),
+      onPressed: () => onChoose(action),
+      style: OutlinedButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        minimumSize: const Size.fromHeight(56),
+        padding: const EdgeInsets.all(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            deckCard.card.name,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Text(
+            '${_cardTypeName(deckCard.card.type)} · 비용 ${deckCard.card.cost}',
+          ),
+          for (final line in effectLines) Text(line),
         ],
       ),
     );
