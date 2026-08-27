@@ -234,6 +234,23 @@ void main() {
       expect(result.state.karma, 39);
     });
 
+    test('턴 종료 업 폭발로 마지막 적을 쓰러뜨리면 즉시 승리한다', () {
+      final state = _start(
+        deck: _deck(_cleanGuard),
+        karma: 20,
+        enemies: [_enemy(hp: 1)],
+        relics: [_relic(const KarmaBurstEffect())],
+      );
+
+      final result = applyAction(state, const EndTurn());
+
+      expect(result.state.outcome, CombatOutcome.victory);
+      expect(
+        result.events.whereType<CombatEnded>().single.outcome,
+        CombatOutcome.victory,
+      );
+    });
+
     test('적 사망 유물은 사망 이벤트 직후 체력을 회복하고 방어를 얻는다', () {
       final state = _start(
         deck: _deck(_fatalStrike),
