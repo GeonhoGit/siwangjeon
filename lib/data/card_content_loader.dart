@@ -144,10 +144,14 @@ int _tunedInt(Map<String, Object?> map, String key) {
   }
   return switch (tuningKey) {
     'fastingCleanse' => PurificationCardTuning.fastingCleanse,
+    'fastingEnhancedCleanse' => PurificationCardTuning.fastingEnhancedCleanse,
     'fastingWeak' => PurificationCardTuning.fastingWeak,
     'veilCleanse' => PurificationCardTuning.veilCleanse,
+    'veilEnhancedCleanse' => PurificationCardTuning.veilEnhancedCleanse,
     'veilVulnerable' => PurificationCardTuning.veilVulnerable,
     'shatteredWardCleanse' => PurificationCardTuning.shatteredWardCleanse,
+    'shatteredWardEnhancedCleanse' =>
+      PurificationCardTuning.shatteredWardEnhancedCleanse,
     'shatteredWardBlockCost' => PurificationCardTuning.shatteredWardBlockCost,
     _ => throw FormatException('알 수 없는 카드 튜닝 값: $tuningKey'),
   };
