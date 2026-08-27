@@ -5,6 +5,10 @@
 /// 콘텐츠를 JSON으로 옮겨도 재생 규칙은 이 레이어에 남는다.
 library;
 
+import '../model/combat_state.dart';
+
+export '../model/combat_state.dart' show KarmaBand;
+
 /// 사건 하나. id는 저장하지 않지만 노드별 reward 시드로 같은 사건을 다시 뽑는
 /// 콘텐츠 식별자이므로 배포 버전 안에서는 고정한다.
 class RunEventDef {
@@ -57,12 +61,6 @@ class RunEventChoice {
   bool isAvailableIn(KarmaBand band) =>
       availableKarmaBands == null || availableKarmaBands!.contains(band);
 }
-
-/// §3.3의 업 구간을 숫자 대신 의미로 콘텐츠에 전달한다.
-///
-/// 0~19/20~49/50~79/80~100의 경계값은 조정 가능한 수치이므로 `RunTuning`에
-/// 남기고, 사건 데이터는 어느 상태에서 어떤 질문을 던질지만 고른다.
-enum KarmaBand { clean, ordinary, turbid, evil }
 
 /// 데이터 콘텐츠가 참조하는 사건 결과의 종류.
 ///

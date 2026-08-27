@@ -35,7 +35,9 @@ class CombatTuning {
     this.enemyDeathRelicHeal = 2,
     this.enemyDeathRelicBlock = 5,
     this.turbidRelicDamageReduction = 1,
-  });
+    this.enemyPhaseTwoThresholdPercent = 50,
+  }) : assert(enemyPhaseTwoThresholdPercent > 0),
+       assert(enemyPhaseTwoThresholdPercent < 100);
 
   /// §3.2 — 매 턴 회복되는 기력(氣). 기획서가 정한 값이다.
   final int energyPerTurn;
@@ -86,6 +88,10 @@ class CombatTuning {
   final int enemyDeathRelicHeal;
   final int enemyDeathRelicBlock;
   final int turbidRelicDamageReduction;
+
+  /// 페이즈 적이 2페이즈로 넘어가는 최대 체력 비율. 전이는 체력만 보고
+  /// 결정하므로 난수 스트림을 소모하지 않는다.
+  final int enemyPhaseTwoThresholdPercent;
 
   static const CombatTuning m0 = CombatTuning();
 }

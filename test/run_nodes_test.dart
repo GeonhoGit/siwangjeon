@@ -725,7 +725,7 @@ String _availableKarmaBands(RunEventChoice choice) {
 
 int _karmaForChoice(RunEventChoice choice) {
   final bands = choice.availableKarmaBands;
-  if (bands == null || bands.contains(KarmaBand.clean)) return 10;
+  if (bands == null || bands.contains(KarmaBand.pure)) return 10;
   if (bands.contains(KarmaBand.ordinary)) return 30;
   if (bands.contains(KarmaBand.turbid)) return 60;
   return 90;

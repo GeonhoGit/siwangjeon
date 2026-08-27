@@ -3,6 +3,7 @@ library;
 
 import '../combat/combat_engine.dart';
 import '../combat/tuning.dart';
+import '../model/boss.dart';
 import '../model/card.dart';
 import '../model/combat_action.dart';
 import '../model/combat_state.dart';
@@ -12,6 +13,7 @@ import '../rng/rng.dart';
 import 'run_action.dart';
 import 'run_content.dart';
 import 'run_event.dart';
+import 'judgment_preview.dart';
 import 'run_map.dart';
 import 'run_node_type.dart';
 import 'run_tuning.dart';
@@ -31,9 +33,9 @@ class IllegalRunActionError implements Exception {
   String toString() => 'IllegalRunActionError: $message';
 }
 
-/// 런이 더 진행될 수 없는 결과. 전투 승리는 다음 노드로 이어지므로 여기에
-/// 넣지 않는다.
-enum RunOutcome { defeat }
+/// 런이 더 진행될 수 없는 결과. 일반 전투 승리는 다음 노드로 이어지지만,
+/// 1막 시왕 심판 승리는 막을 완주한 결과다.
+enum RunOutcome { defeat, victory }
 
 /// 시드와 액션 로그에서 다시 만든 현재 런 진행 상태.
 ///
@@ -56,6 +58,8 @@ class RunProgress {
     this.pendingShop,
     this.pendingWildCamp,
     this.pendingEvent,
+    List<RelicDef> victoryRelics = const [],
+    this.judgmentPreview,
     this.outcome,
   }) : assert(deck != null || deckCards != null),
        visitedNodeIds = List.unmodifiable(visitedNodeIds),
@@ -66,7 +70,8 @@ class RunProgress {
          deck ??
              (deckCards ?? const <RunDeckCard>[]).map((entry) => entry.card),
        ),
-       relics = List.unmodifiable(relics);
+       relics = List.unmodifiable(relics),
+       victoryRelics = List.unmodifiable(victoryRelics);
 
   final RunMap map;
   final List<int> visitedNodeIds;
@@ -105,6 +110,14 @@ class RunProgress {
   final WildCampVisit? pendingWildCamp;
   final PendingRunEvent? pendingEvent;
 
+  /// 악업 심판 승리 때 즉시 확정된 유물. 저장하지 않고 보스 전투 로그를
+  /// 재생해 매번 같은 결과를 만든다.
+  final List<RelicDef> victoryRelics;
+
+  /// 다음 합법 이동이 시왕일 때만 만드는 심판 안내. UI는 이 도메인 문자열을
+  /// 배치만 하며 업 구간을 다시 해석하지 않는다.
+  final JudgmentPreview? judgmentPreview;
+
   final RunOutcome? outcome;
 
   int? get currentNodeId => visitedNodeIds.isEmpty ? null : visitedNodeIds.last;
@@ -116,6 +129,16 @@ class RunProgress {
 
   bool get isInCombat => combat != null && !combat!.isOver;
 }
+
+String runOutcomeTitle(RunOutcome outcome) => switch (outcome) {
+  RunOutcome.defeat => '여정이 끝났습니다',
+  RunOutcome.victory => '시왕의 심판을 마쳤습니다',
+};
+
+String runOutcomeMessage(RunOutcome outcome) => switch (outcome) {
+  RunOutcome.defeat => '혼은 저승길에서 멈췄습니다.',
+  RunOutcome.victory => '1막을 완주하고 다음 생의 길을 열었습니다.',
+};
 
 /// 전투 승리 뒤 선택을 기다리는 카드 보상.
 ///
@@ -380,6 +403,7 @@ RunProgress replayRun(
   WildCampVisit? pendingWildCamp;
   PendingRunEvent? pendingEvent;
   RunOutcome? outcome;
+  final victoryRelics = <RelicDef>[];
   final combatLogNodeIds = <int>{};
 
   for (final action in state.actionLog) {
@@ -520,6 +544,21 @@ RunProgress replayRun(
                 tuning: tuning,
                 karmaGained: karma - karmaBeforeReward,
               );
+            } else if (node.type == RunNodeType.boss) {
+              // 시왕 처치는 1막 완주다. 일반 전투처럼 카드·노잣돈 대기열을
+              // 만들면 이미 끝난 런에서 후속 액션이 생겨 저장 계약이 흐려진다.
+              outcome = RunOutcome.victory;
+              if (tuning.karmaBandFor(karma) == KarmaBand.wicked) {
+                victoryRelics.addAll(
+                  wickedBossRelicsForNode(
+                    runSeed: state.seed,
+                    node: node,
+                    content: content!,
+                    tuning: tuning,
+                  ),
+                );
+                relics.addAll(victoryRelics);
+              }
             } else {
               money += moneyRewardForNode(node, tuning: tuning);
               pendingCardReward = cardRewardForNode(
@@ -735,6 +774,29 @@ RunProgress replayRun(
     }
   }
 
+  final upcomingBoss = _upcomingBossNode(
+    map: map,
+    visitedNodeIds: visitedNodeIds,
+    combat: combat,
+    pendingCardReward: pendingCardReward,
+    pendingRelicReward: pendingRelicReward,
+    pendingShop: pendingShop,
+    pendingWildCamp: pendingWildCamp,
+    pendingEvent: pendingEvent,
+    outcome: outcome,
+  );
+  final judgmentPreview = upcomingBoss == null || content == null
+      ? null
+      : judgmentPreviewFor(
+          karma: karma,
+          boss: bossForNode(
+            runSeed: state.seed,
+            node: upcomingBoss,
+            content: content,
+          ),
+          tuning: tuning,
+        );
+
   return RunProgress(
     map: map,
     visitedNodeIds: visitedNodeIds,
@@ -750,6 +812,8 @@ RunProgress replayRun(
     pendingShop: pendingShop,
     pendingWildCamp: pendingWildCamp,
     pendingEvent: pendingEvent,
+    victoryRelics: victoryRelics,
+    judgmentPreview: judgmentPreview,
     outcome: outcome,
   );
 }
@@ -789,17 +853,25 @@ int eventSeedForNode(int runSeed, int nodeId) =>
     _nodeSeed(runSeed, nodeId, 0xD3A2646C);
 
 /// [RngStream.encounter]에서 현재 노드의 적을 결정론적으로 구성한다.
-///
-/// 정예와 보스의 전용 적은 아직 없으므로 [RunTuning]이 정한 수만큼 M0 적 풀을
-/// 뽑는다. 전용 콘텐츠가 생기면 이 함수의 입력 풀만 역할별로 바꾸면 된다.
 List<Enemy> encounterForNode({
   required int runSeed,
   required RunNode node,
   required RunContent content,
   RunTuning tuning = RunTuning.m1,
+  int karma = 0,
 }) {
   if (!node.hostsCombat) {
     throw ArgumentError.value(node, 'node', '전투가 아닌 노드에는 적 구성이 없다');
+  }
+
+  if (node.type == RunNodeType.boss) {
+    return [
+      judgmentEnemyFor(
+        boss: bossForNode(runSeed: runSeed, node: node, content: content),
+        karma: karma,
+        tuning: tuning,
+      ),
+    ];
   }
 
   final count = tuning.encounterSizeFor(node.type);
@@ -825,6 +897,59 @@ List<Enemy> encounterForNode({
   }
 
   return List.unmodifiable(enemies);
+}
+
+/// 노드별 encounter 시드에서 시왕 하나를 고른다. M1은 한 종류뿐이지만,
+/// 선택도 일반 조우와 같은 독립 스트림에 두어 M2의 시왕 추가가 재생 경로를
+/// 바꾸지 않게 한다.
+BossDef bossForNode({
+  required int runSeed,
+  required RunNode node,
+  required RunContent content,
+}) {
+  if (node.type != RunNodeType.boss) {
+    throw ArgumentError.value(node, 'node', '보스 노드가 아니다');
+  }
+  if (content.bossPool.isEmpty) {
+    throw ArgumentError.value(
+      content.bossPool,
+      'bossPool',
+      '보스 노드에는 시왕 콘텐츠가 필요하다',
+    );
+  }
+  final (index, _) = Rng.forStream(
+    encounterSeedForNode(runSeed, node.id),
+    RngStream.encounter,
+  ).nextInt(content.bossPool.length);
+  return content.bossPool[index];
+}
+
+/// 업 구간을 시왕의 초기 상태로 해석한다. 전이는 체력·인덱스만 바꾸며 새
+/// 난수를 소비하지 않으므로, 저장하는 `{seed, characterId, actionLog}`에는
+/// 심판 결과나 페이즈 상태를 별도로 넣지 않는다.
+Enemy judgmentEnemyFor({
+  required BossDef boss,
+  required int karma,
+  RunTuning tuning = RunTuning.m1,
+}) {
+  final band = tuning.karmaBandFor(karma);
+  var enemy = boss.enemy;
+  switch (band) {
+    case KarmaBand.pure:
+      final maxHp =
+          (enemy.maxHp * (100 - tuning.pureBossHpReductionPercent)) ~/ 100;
+      final reducedHp = maxHp < 1 ? 1 : maxHp;
+      enemy = enemy.copyWith(hp: reducedHp, maxHp: reducedHp);
+    case KarmaBand.ordinary:
+      break;
+    case KarmaBand.turbid:
+      enemy = enemy.withExtraPattern(boss.turbidExtraMove);
+    case KarmaBand.wicked:
+      if (enemy.phaseCount > 1) {
+        enemy = enemy.copyWith(phaseIndex: 1, patternIndex: 0);
+      }
+  }
+  return enemy;
 }
 
 /// 현재 노드의 카드 보상 후보를 `RngStream.reward`에서 뽑는다.
@@ -902,6 +1027,44 @@ RelicReward relicRewardForNode({
   return RelicReward(nodeId: node.id, relics: relics, karmaGained: karmaGained);
 }
 
+/// 악업 시왕 승리 유물은 선택 대기열이 아니라 즉시 정한다.
+///
+/// 보스전이 끝나는 순간 [RunOutcome.victory]가 되므로 `legalRunActions`는
+/// 반드시 비어야 한다. 유물 선택을 남기면 끝난 런에서 보상 액션이 열려 그
+/// 계약을 깨므로, reward 스트림에서 유물을 확정해 런 재생 시 다시 얻는다.
+/// §3.3의 "보상 등급 상승/하락"과 "최상급 유물"은 [RelicDef]에 등급이 없고
+/// 15종 전부의 등급·추첨 체계를 함께 정해야 하므로 이번 범위에서는 의도적으로
+/// 보류한다. 여기서는 악업의 "유물 보상 확정"만 구현한다.
+List<RelicDef> wickedBossRelicsForNode({
+  required int runSeed,
+  required RunNode node,
+  required RunContent content,
+  RunTuning tuning = RunTuning.m1,
+}) {
+  if (node.type != RunNodeType.boss) {
+    throw ArgumentError.value(node, 'node', '보스 노드만 악업 승리 유물을 가진다');
+  }
+  if (content.relicRewardPool.length < tuning.wickedBossRelicCount) {
+    throw ArgumentError.value(
+      content.relicRewardPool,
+      'relicRewardPool',
+      '악업 시왕 보상 풀보다 많은 유물을 확정할 수 없다',
+    );
+  }
+  var rng = Rng.forStream(
+    relicRewardSeedForNode(runSeed, node.id),
+    RngStream.reward,
+  );
+  final available = List<RelicDef>.of(content.relicRewardPool);
+  final relics = <RelicDef>[];
+  for (var index = 0; index < tuning.wickedBossRelicCount; index++) {
+    final (picked, next) = rng.nextInt(available.length);
+    rng = next;
+    relics.add(available.removeAt(picked));
+  }
+  return List.unmodifiable(relics);
+}
+
 /// 현재 상점의 서로 다른 상품 후보를 `RngStream.reward`에서 뽑는다.
 ShopInventory shopInventoryForNode({
   required int runSeed,
@@ -952,15 +1115,15 @@ RunEventDef eventForNode({
 
 /// 전투 승리 때 즉시 얻는 노잣돈.
 ///
-/// 정예는 유물과 업보를 받는 대신 노잣돈을 받지 않는다. 보스의 최상급
-/// 유물 보상은 후속 콘텐츠에서 붙이므로 현재는 기본 노잣돈을 준다.
+/// 정예는 유물과 업보를 받는 대신 노잣돈을 받지 않는다. 시왕 승리는 런을
+/// 닫으므로 노잣돈·카드 보상 대신 악업일 때만 위의 확정 유물을 더한다.
 int moneyRewardForNode(RunNode node, {RunTuning tuning = RunTuning.m1}) {
   if (!node.hostsCombat) {
     throw ArgumentError.value(node, 'node', '전투가 아닌 노드에는 노잣돈 보상이 없다');
   }
   return switch (node.type) {
-    RunNodeType.elite => 0,
-    RunNodeType.combat || RunNodeType.boss => tuning.baseMoneyReward,
+    RunNodeType.elite || RunNodeType.boss => 0,
+    RunNodeType.combat => tuning.baseMoneyReward,
     RunNodeType.shop ||
     RunNodeType.wildCamp ||
     RunNodeType.event => throw ArgumentError.value(
@@ -992,10 +1155,39 @@ CombatState _beginNodeCombat({
       node: node,
       content: content,
       tuning: tuning,
+      karma: karma,
     ),
     karma: karma,
     relics: relics,
   ).state;
+}
+
+RunNode? _upcomingBossNode({
+  required RunMap map,
+  required List<int> visitedNodeIds,
+  required CombatState? combat,
+  required CardReward? pendingCardReward,
+  required RelicReward? pendingRelicReward,
+  required ShopInventory? pendingShop,
+  required WildCampVisit? pendingWildCamp,
+  required PendingRunEvent? pendingEvent,
+  required RunOutcome? outcome,
+}) {
+  if (outcome != null ||
+      combat != null ||
+      pendingCardReward != null ||
+      pendingRelicReward != null ||
+      pendingShop != null ||
+      pendingWildCamp != null ||
+      pendingEvent != null ||
+      visitedNodeIds.isEmpty) {
+    return null;
+  }
+  for (final nodeId in map.nodeById(visitedNodeIds.last).nextNodeIds) {
+    final node = map.nodeById(nodeId);
+    if (node.type == RunNodeType.boss) return node;
+  }
+  return null;
 }
 
 List<int> _legalNextNodeIds(RunProgress progress) {
