@@ -8,6 +8,7 @@ library;
 
 import '../model/card.dart';
 import '../model/enemy.dart';
+import '../model/relic.dart';
 import 'run_event.dart';
 
 class RunContent {
@@ -20,11 +21,13 @@ class RunContent {
     required List<CardDef> cardRewardPool,
     List<CardDef>? shopCardPool,
     List<RunEventDef> events = const [],
+    List<RelicDef> relicRewardPool = const [],
   }) : deck = List.unmodifiable(deck),
        encounterPool = List.unmodifiable(encounterPool),
        cardRewardPool = List.unmodifiable(cardRewardPool),
        shopCardPool = List.unmodifiable(shopCardPool ?? cardRewardPool),
-       events = List.unmodifiable(events) {
+       events = List.unmodifiable(events),
+       relicRewardPool = List.unmodifiable(relicRewardPool) {
     if (maxHp <= 0) {
       throw ArgumentError.value(maxHp, 'maxHp', '시작 체력은 양수여야 한다');
     }
@@ -86,6 +89,14 @@ class RunContent {
         this.events.length) {
       throw ArgumentError.value(events, 'events', '사건 id는 고유해야 한다');
     }
+    if (this.relicRewardPool.map((relic) => relic.id).toSet().length !=
+        this.relicRewardPool.length) {
+      throw ArgumentError.value(
+        relicRewardPool,
+        'relicRewardPool',
+        '유물 보상 풀의 id는 고유해야 한다',
+      );
+    }
   }
 
   /// 런 전체에서 이어지는 혼의 최대치와 초기치.
@@ -115,4 +126,6 @@ class RunContent {
   /// 노드별 reward 시드로 뽑는 사건 정의. 기존 전투 전용 테스트는 사건 노드를
   /// 만들지 않으므로 빈 기본값을 허용하되, 실제 사건 노드 진입은 엔진이 거부한다.
   final List<RunEventDef> events;
+
+  final List<RelicDef> relicRewardPool;
 }

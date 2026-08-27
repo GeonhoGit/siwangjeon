@@ -16,6 +16,7 @@ import '../domain/model/enemy.dart';
 import '../domain/model/status.dart';
 import '../domain/run/run_content.dart';
 import 'm1_events.dart';
+import 'm1_relics.dart';
 
 // ── M0 카드 20장 (§12-1) ─────────────────────────────────────
 
@@ -426,6 +427,7 @@ RunContent m0RunContent() => RunContent(
   encounterPool: [...defaultEncounter(), yacha(), nachal()],
   cardRewardPool: cardRewardPool,
   events: m1Events,
+  relicRewardPool: m1Relics,
 );
 
 /// 플레이어 시작 체력 (§3.2 — 체력 범위 0~80).
