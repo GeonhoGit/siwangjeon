@@ -13,9 +13,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:siwangjeon/app/app.dart';
 import 'package:siwangjeon/app/combat_controller.dart';
 import 'package:siwangjeon/data/m0_content.dart';
+import 'package:siwangjeon/data/m1_relics.dart';
 import 'package:siwangjeon/domain/combat/combat_engine.dart';
 import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/model/card.dart';
+import 'package:siwangjeon/domain/model/game_event.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
 import 'package:siwangjeon/ui/labels.dart';
 
@@ -138,6 +140,47 @@ class _SameCardDeckCombatController extends CombatController {
   }
 }
 
+class _RelicCombatController extends CombatController {
+  @override
+  CombatSession build() {
+    final result = beginCombat(
+      seed: 7,
+      hp: startingHp,
+      maxHp: startingHp,
+      deck: starterDeck,
+      enemies: defaultEncounter(),
+      relics: m1Relics.take(14).toList(),
+    );
+
+    return CombatSession(
+      seed: 7,
+      state: result.state,
+      lastEvents: result.events,
+      actionLog: const [],
+    );
+  }
+}
+
+class _HealingEventCombatController extends CombatController {
+  @override
+  CombatSession build() {
+    final result = beginCombat(
+      seed: 7,
+      hp: startingHp,
+      maxHp: startingHp,
+      deck: starterDeck,
+      enemies: defaultEncounter(),
+    );
+
+    return CombatSession(
+      seed: 7,
+      state: result.state,
+      lastEvents: const [HpGained(2)],
+      actionLog: const [],
+    );
+  }
+}
+
 Rect paintBounds(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);
   final box = tester.renderObject<RenderBox>(finder);
@@ -254,6 +297,55 @@ double largestScreenBlankBand(WidgetTester tester) {
 }
 
 void main() {
+  testWidgets('체력 회복 이벤트를 전투 화면이 재생한다', (tester) async {
+    await pumpCombat(tester, controller: _HealingEventCombatController.new);
+
+    try {
+      expect(find.text('체력 +2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
+  testWidgets('전투에서도 14개 유물 목록을 경계 기기와 글꼴 배율에서 확인한다', (tester) async {
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        await pumpCombat(
+          tester,
+          device: device,
+          textScale: textScale,
+          controller: _RelicCombatController.new,
+        );
+
+        try {
+          final button = layoutBounds(
+            tester,
+            find.byKey(const ValueKey('combat-relic-inventory')),
+          );
+          expect(button.width, greaterThanOrEqualTo(48));
+          expect(button.height, greaterThanOrEqualTo(48));
+
+          await tester.tap(
+            find.byKey(const ValueKey('combat-relic-inventory')),
+          );
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.byKey(ValueKey('owned-relic-13-${m1Relics[13].id}')),
+            240,
+            scrollable: find.descendant(
+              of: find.byKey(const ValueKey('relic-inventory-list')),
+              matching: find.byType(Scrollable),
+            ),
+          );
+          expect(tester.takeException(), isNull, reason: device.name);
+        } finally {
+          await disposeTree(tester);
+        }
+      }
+    }
+  });
+
   test('선택 카드는 손패 팬에서 마지막에 그린다', () {
     expect(
       handFanPaintOrder(
