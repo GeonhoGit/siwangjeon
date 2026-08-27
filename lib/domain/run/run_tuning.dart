@@ -5,6 +5,8 @@
 /// 바꿔 런 길이와 경로 구성을 따로 측정한다.
 library;
 
+import '../combat/tuning.dart';
+import '../model/karma_band.dart';
 import 'run_node_type.dart';
 import 'run_event.dart';
 
@@ -49,9 +51,7 @@ class RunTuning {
     this.wildCampRestHeal = 24,
     this.wildCampRepentKarmaCleanse = 3,
     this.wildCampRepentMoneyCost = 30,
-    this.cleanKarmaMax = 19,
-    this.ordinaryKarmaMax = 49,
-    this.turbidKarmaMax = 79,
+    this.karmaBandThresholds = defaultKarmaBandThresholds,
     this.pureBossHpReductionPercent = 20,
     this.wickedBossRelicCount = 1,
   }) : assert(bossesPerAct == 1),
@@ -87,9 +87,6 @@ class RunTuning {
        assert(wildCampRestHeal > 0),
        assert(wildCampRepentKarmaCleanse > 0),
        assert(wildCampRepentMoneyCost >= 0),
-       assert(cleanKarmaMax >= 0),
-       assert(ordinaryKarmaMax >= cleanKarmaMax),
-       assert(turbidKarmaMax >= ordinaryKarmaMax),
        assert(pureBossHpReductionPercent >= 0),
        assert(pureBossHpReductionPercent < 100),
        assert(wickedBossRelicCount > 0);
@@ -191,11 +188,8 @@ class RunTuning {
   final int wildCampRepentKarmaCleanse;
   final int wildCampRepentMoneyCost;
 
-  /// §3.3의 청정·평범·탁함·악업 경계. 사건 콘텐츠는 숫자를 직접 비교하지
-  /// 않고 [karmaBandFor]가 돌려주는 의미 구간만 사용한다.
-  final int cleanKarmaMax;
-  final int ordinaryKarmaMax;
-  final int turbidKarmaMax;
+  /// §3.3의 청정·평범·탁함·악업 경계. 전투와 심판이 같은 인스턴스를 쓴다.
+  final KarmaBandThresholds karmaBandThresholds;
 
   /// 청정 심판에서 줄이는 시왕 최대 체력 비율 (§3.3).
   final int pureBossHpReductionPercent;
@@ -230,12 +224,7 @@ class RunTuning {
     RunEventEffect.endureWardenTrial => const RunEventDelta(hp: -12),
   };
 
-  KarmaBand karmaBandFor(int karma) {
-    if (karma <= cleanKarmaMax) return KarmaBand.pure;
-    if (karma <= ordinaryKarmaMax) return KarmaBand.ordinary;
-    if (karma <= turbidKarmaMax) return KarmaBand.turbid;
-    return KarmaBand.wicked;
-  }
+  KarmaBand karmaBandFor(int karma) => karmaBandThresholds.forKarma(karma);
 
   bool isBranchingDepth(int depth) =>
       depth >= firstBranchDepth && depth <= lastBranchDepth;

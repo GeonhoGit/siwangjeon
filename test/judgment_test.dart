@@ -1,11 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:siwangjeon/domain/combat/combat_engine.dart';
+import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/boss.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/combat_action.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/game_event.dart';
+import 'package:siwangjeon/domain/model/karma_band.dart';
 import 'package:siwangjeon/domain/model/relic.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 import 'package:siwangjeon/domain/run/run_action.dart';
@@ -63,6 +65,41 @@ void main() {
       expect(turbid.activePattern.last, isA<EnemyInflict>());
       expect(wicked.phaseIndex, 1);
       expect(wicked.intent, isA<EnemyAttack>());
+    });
+
+    test('조정한 업 경계는 전투 유물과 심판에 함께 적용한다', () {
+      const thresholds = KarmaBandThresholds(
+        cleanKarmaMax: 10,
+        ordinaryKarmaMax: 20,
+        turbidKarmaMax: 30,
+      );
+      const tuning = RunTuning(karmaBandThresholds: thresholds);
+      final relic = RelicDef(
+        'turbid_boundary_relic',
+        '탁함 경계 유물',
+        RelicTrigger.turnStarted,
+        const TurbidEnergyEffect(),
+      );
+
+      final combat = beginCombat(
+        seed: 48,
+        hp: 80,
+        maxHp: 80,
+        deck: List<CardDef>.filled(8, _phaseStrike),
+        enemies: [_boss(hp: 100).enemy],
+        karma: 21,
+        relics: [relic],
+        tuning: const CombatTuning(karmaBandThresholds: thresholds),
+      ).state;
+      final judgment = judgmentEnemyFor(
+        boss: _boss(hp: 100),
+        karma: 21,
+        tuning: tuning,
+      );
+
+      expect(combat.karmaBand, KarmaBand.turbid);
+      expect(combat.energy, 4);
+      expect(judgment.activePattern, hasLength(3));
     });
 
     test('보스 노드는 일반 조우 대신 보스 풀의 시왕 한 명만 배치한다', () {

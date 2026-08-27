@@ -122,6 +122,7 @@ void main() {
         energy: 3,
         block: 0,
         karma: 0,
+        karmaBandThresholds: defaultKarmaBandThresholds,
         hand: const [power],
         drawPile: const [],
         discardPile: deckOf(strike, 5),
@@ -201,8 +202,10 @@ void main() {
 
       // 기력 3을 전부 쓴다.
       for (var i = 0; i < 3; i++) {
-        state = applyAction(state, const PlayCard(handIndex: 0, targetIndex: 0))
-            .state;
+        state = applyAction(
+          state,
+          const PlayCard(handIndex: 0, targetIndex: 0),
+        ).state;
       }
       expect(state.energy, 0);
 
@@ -214,7 +217,10 @@ void main() {
     });
 
     test('죽은 적을 대상으로 삼을 수 없다', () {
-      var state = start(deck: deckOf(strike, 10), enemies: [dummy(hp: 6), dummy()]);
+      var state = start(
+        deck: deckOf(strike, 10),
+        enemies: [dummy(hp: 6), dummy()],
+      );
 
       state = applyAction(
         state,
@@ -243,7 +249,10 @@ void main() {
     });
 
     test('업은 자기 자신의 피해를 키우지 않는다', () {
-      final state = start(deck: deckOf(bladeOfGrudge, 10), enemies: [dummy(hp: 50)]);
+      final state = start(
+        deck: deckOf(bladeOfGrudge, 10),
+        enemies: [dummy(hp: 50)],
+      );
 
       final result = applyAction(
         state,
@@ -269,7 +278,11 @@ void main() {
         PlayCard(handIndex: handIndexOf(state, bladeOfGrudge), targetIndex: 0),
       );
 
-      expect(result.state.enemies[0].hp, 39, reason: '6 + floor(50 * 0.1) = 11');
+      expect(
+        result.state.enemies[0].hp,
+        39,
+        reason: '6 + floor(50 * 0.1) = 11',
+      );
     });
 
     test('업은 100을 넘지 않는다', () {
@@ -289,14 +302,14 @@ void main() {
     });
 
     test('심판 등급 경계는 19/20, 49/50, 79/80이다', () {
-      expect(KarmaBand.of(0), KarmaBand.pure);
-      expect(KarmaBand.of(19), KarmaBand.pure);
-      expect(KarmaBand.of(20), KarmaBand.ordinary);
-      expect(KarmaBand.of(49), KarmaBand.ordinary);
-      expect(KarmaBand.of(50), KarmaBand.turbid);
-      expect(KarmaBand.of(79), KarmaBand.turbid);
-      expect(KarmaBand.of(80), KarmaBand.wicked);
-      expect(KarmaBand.of(100), KarmaBand.wicked);
+      expect(defaultKarmaBandThresholds.forKarma(0), KarmaBand.pure);
+      expect(defaultKarmaBandThresholds.forKarma(19), KarmaBand.pure);
+      expect(defaultKarmaBandThresholds.forKarma(20), KarmaBand.ordinary);
+      expect(defaultKarmaBandThresholds.forKarma(49), KarmaBand.ordinary);
+      expect(defaultKarmaBandThresholds.forKarma(50), KarmaBand.turbid);
+      expect(defaultKarmaBandThresholds.forKarma(79), KarmaBand.turbid);
+      expect(defaultKarmaBandThresholds.forKarma(80), KarmaBand.wicked);
+      expect(defaultKarmaBandThresholds.forKarma(100), KarmaBand.wicked);
     });
   });
 
@@ -527,6 +540,7 @@ void main() {
         energy: 3,
         block: 0,
         karma: 0,
+        karmaBandThresholds: defaultKarmaBandThresholds,
         hand: const [],
         drawPile: deckOf(strike, 5),
         discardPile: const [],
@@ -564,11 +578,7 @@ void main() {
       expect(result.state.turn, 2);
       expect(result.state.energy, 3, reason: '§3.1 — 기력 3 회복');
       expect(result.state.hand.length, 5, reason: '§3.1 — 손패 5장까지 드로우');
-      expect(
-        result.state.discardPile.length,
-        5,
-        reason: '사용한 1장 + 남은 손패 4장',
-      );
+      expect(result.state.discardPile.length, 5, reason: '사용한 1장 + 남은 손패 4장');
     });
 
     test('적은 예고한 행동을 실행하고 다음 행동을 예고한다', () {
@@ -751,13 +761,17 @@ void main() {
     test('대상 카드는 살아 있는 적마다 하나씩 나온다', () {
       final state = start(
         deck: deckOf(strike, 10),
-        enemies: [dummy(), dummy(), Enemy(
-          id: 'dead',
-          name: '시체',
-          hp: 0,
-          maxHp: 10,
-          pattern: const [EnemyDefend(0)],
-        )],
+        enemies: [
+          dummy(),
+          dummy(),
+          Enemy(
+            id: 'dead',
+            name: '시체',
+            hp: 0,
+            maxHp: 10,
+            pattern: const [EnemyDefend(0)],
+          ),
+        ],
       );
 
       final plays = legalActions(state).whereType<PlayCard>().toList();
@@ -788,7 +802,10 @@ void main() {
         enemies: [dummy(hp: 6), dummy(hp: 6)],
       );
 
-      state = applyAction(state, const PlayCard(handIndex: 0, targetIndex: 0)).state;
+      state = applyAction(
+        state,
+        const PlayCard(handIndex: 0, targetIndex: 0),
+      ).state;
       expect(state.outcome, isNull, reason: '아직 한 마리 남았다');
 
       final result = applyAction(
@@ -913,7 +930,11 @@ void main() {
       );
 
       expect(previewDamage(low, bladeOfGrudge), 6);
-      expect(previewDamage(high, bladeOfGrudge), 13, reason: '6 + floor(70 * 0.1)');
+      expect(
+        previewDamage(high, bladeOfGrudge),
+        13,
+        reason: '6 + floor(70 * 0.1)',
+      );
     });
 
     test('미리보기와 실제로 들어가는 피해가 같다', () {
@@ -959,9 +980,7 @@ void main() {
 
       final weakened = state.copyWith(
         enemies: [
-          state.enemies[0].copyWith(
-            statuses: const {StatusId.weak: 1},
-          ),
+          state.enemies[0].copyWith(statuses: const {StatusId.weak: 1}),
         ],
       );
       expect(previewEnemyDamage(weakened, 0), 6, reason: 'floor(8 * 0.75)');
@@ -985,6 +1004,7 @@ void main() {
         energy: 3,
         block: 0,
         karma: 50,
+        karmaBandThresholds: defaultKarmaBandThresholds,
         hand: const [],
         drawPile: deckOf(strike, 5),
         discardPile: const [],
@@ -1003,7 +1023,11 @@ void main() {
 
       expect(applyAction(state, const EndTurn()).state.enemies[0].hp, 47);
       expect(
-        applyAction(state, const EndTurn(), tuning: generous).state.enemies[0].hp,
+        applyAction(
+          state,
+          const EndTurn(),
+          tuning: generous,
+        ).state.enemies[0].hp,
         45,
         reason: '20점당 1 → 10점당 1이 되면 3이 5가 된다',
       );

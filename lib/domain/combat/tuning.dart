@@ -9,6 +9,15 @@
 /// 흩어져 있으면 그 작업이 코드 수정이 되어 버린다.
 library;
 
+import '../model/karma_band.dart';
+
+/// §3.3의 업 구간 경계는 전투 유물과 런 심판이 함께 소비한다.
+const defaultKarmaBandThresholds = KarmaBandThresholds(
+  cleanKarmaMax: 19,
+  ordinaryKarmaMax: 49,
+  turbidKarmaMax: 79,
+);
+
 class CombatTuning {
   const CombatTuning({
     this.energyPerTurn = 3,
@@ -36,6 +45,7 @@ class CombatTuning {
     this.enemyDeathRelicBlock = 5,
     this.turbidRelicDamageReduction = 1,
     this.enemyPhaseTwoThresholdPercent = 50,
+    this.karmaBandThresholds = defaultKarmaBandThresholds,
   }) : assert(enemyPhaseTwoThresholdPercent > 0),
        assert(enemyPhaseTwoThresholdPercent < 100);
 
@@ -56,6 +66,9 @@ class CombatTuning {
 
   /// §3.3 — 업 상한.
   final int maxKarma;
+
+  /// 전투 유물이 참조하는 업 구간. 런 심판과 같은 값을 주입한다.
+  final KarmaBandThresholds karmaBandThresholds;
 
   /// 취약: 받는 피해 배수.
   final double vulnerableMultiplier;

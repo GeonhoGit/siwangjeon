@@ -1159,6 +1159,7 @@ CombatState _beginNodeCombat({
     ),
     karma: karma,
     relics: relics,
+    tuning: CombatTuning(karmaBandThresholds: tuning.karmaBandThresholds),
   ).state;
 }
 

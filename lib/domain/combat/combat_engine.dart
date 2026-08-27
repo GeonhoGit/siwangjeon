@@ -72,6 +72,7 @@ CombatResult beginCombat({
     energy: tuning.energyPerTurn,
     block: 0,
     karma: karma.clamp(0, tuning.maxKarma),
+    karmaBandThresholds: tuning.karmaBandThresholds,
     hand: const [],
     drawPile: drawPile,
     discardPile: const [],
@@ -245,9 +246,11 @@ class _Sim {
       statuses = Map.of(s.statuses),
       rng = s.rng,
       relics = List.of(s.relics),
-      outcome = s.outcome;
+      outcome = s.outcome,
+      karmaBandThresholds = s.karmaBandThresholds;
 
   final CombatTuning tuning;
+  final KarmaBandThresholds karmaBandThresholds;
   final List<GameEvent> events = [];
 
   int turn;
@@ -266,7 +269,7 @@ class _Sim {
   List<RelicDef> relics;
   CombatOutcome? outcome;
 
-  KarmaBand get karmaBand => KarmaBand.of(karma);
+  KarmaBand get karmaBand => karmaBandThresholds.forKarma(karma);
 
   CombatResult finish() {
     return CombatResult(
@@ -277,6 +280,7 @@ class _Sim {
         energy: energy,
         block: block,
         karma: karma,
+        karmaBandThresholds: karmaBandThresholds,
         hand: List.unmodifiable(hand),
         drawPile: List.unmodifiable(drawPile),
         discardPile: List.unmodifiable(discardPile),

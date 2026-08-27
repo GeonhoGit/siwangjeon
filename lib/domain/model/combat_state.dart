@@ -7,8 +7,11 @@ library;
 import '../rng/rng.dart';
 import 'card.dart';
 import 'enemy.dart';
+import 'karma_band.dart';
 import 'relic.dart';
 import 'status.dart';
+
+export 'karma_band.dart' show KarmaBand, KarmaBandThresholds;
 
 /// 전투가 끝난 방식.
 enum CombatOutcome { victory, defeat }
@@ -25,6 +28,7 @@ class CombatState {
     required this.energy,
     required this.block,
     required this.karma,
+    required this.karmaBandThresholds,
     required this.hand,
     required this.drawPile,
     required this.discardPile,
@@ -59,6 +63,9 @@ class CombatState {
   /// 심판(보스전) 시작 시에만 청구된다 (§3.3).
   final int karma;
 
+  /// 이 전투가 런 심판과 공유하는 업 구간 경계.
+  final KarmaBandThresholds karmaBandThresholds;
+
   final List<CardDef> hand;
   final List<CardDef> drawPile;
   final List<CardDef> discardPile;
@@ -89,7 +96,7 @@ class CombatState {
   Iterable<Enemy> get livingEnemies => enemies.where((e) => e.isAlive);
 
   /// 현재 업이 속한 심판 등급 (§3.3).
-  KarmaBand get karmaBand => KarmaBand.of(karma);
+  KarmaBand get karmaBand => karmaBandThresholds.forKarma(karma);
 
   CombatState copyWith({
     int? turn,
@@ -98,6 +105,7 @@ class CombatState {
     int? energy,
     int? block,
     int? karma,
+    KarmaBandThresholds? karmaBandThresholds,
     List<CardDef>? hand,
     List<CardDef>? drawPile,
     List<CardDef>? discardPile,
@@ -115,6 +123,7 @@ class CombatState {
       energy: energy ?? this.energy,
       block: block ?? this.block,
       karma: karma ?? this.karma,
+      karmaBandThresholds: karmaBandThresholds ?? this.karmaBandThresholds,
       hand: hand ?? this.hand,
       drawPile: drawPile ?? this.drawPile,
       discardPile: discardPile ?? this.discardPile,
@@ -125,27 +134,5 @@ class CombatState {
       relics: relics ?? this.relics,
       outcome: outcome ?? this.outcome,
     );
-  }
-}
-
-/// 업 구간에 따른 심판 등급 (§3.3).
-enum KarmaBand {
-  /// 0~19 청정 — 보스 체력 -20%, 보상 등급 하락.
-  pure,
-
-  /// 20~49 평범 — 기준값.
-  ordinary,
-
-  /// 50~79 탁함 — 보스가 추가 패턴 1개 획득, 보상 등급 상승.
-  turbid,
-
-  /// 80~100 악업 — 보스 2페이즈 즉시 진입, 최상급 유물 확정.
-  wicked;
-
-  static KarmaBand of(int karma) {
-    if (karma < 20) return KarmaBand.pure;
-    if (karma < 50) return KarmaBand.ordinary;
-    if (karma < 80) return KarmaBand.turbid;
-    return KarmaBand.wicked;
   }
 }
