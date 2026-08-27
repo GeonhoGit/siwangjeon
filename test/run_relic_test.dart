@@ -5,7 +5,6 @@ import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/combat_action.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
-import 'package:siwangjeon/domain/rng/rng.dart';
 import 'package:siwangjeon/domain/run/run_action.dart';
 import 'package:siwangjeon/domain/run/run_content.dart';
 import 'package:siwangjeon/domain/run/run_engine.dart';
@@ -65,23 +64,27 @@ void main() {
         content: content,
         tuning: _tuning,
       );
-      var rng = Rng.forStream(
-        relicRewardSeedForNode(123, node.id),
-        RngStream.reward,
-      );
-      final available = List.of(content.relicRewardPool);
-      final expectedIds = <String>[];
-      for (var i = 0; i < 3; i++) {
-        final (index, next) = rng.nextInt(available.length);
-        rng = next;
-        expectedIds.add(available.removeAt(index).id);
-      }
+      const expectedIds = [
+        'relic_guardian_beads',
+        'relic_turbid_brazier',
+        'relic_innocent_silk',
+      ];
 
       expect(reward.relics.map((relic) => relic.id), expectedIds);
       expect(
         relicRewardSeedForNode(123, 22),
         isNot(rewardSeedForNode(123, 22)),
       );
+      expect(
+        relicRewardSeedForNode(123, 22),
+        isNot(combatSeedForNode(123, 22)),
+      );
+      expect(
+        relicRewardSeedForNode(123, 22),
+        isNot(encounterSeedForNode(123, 22)),
+      );
+      expect(relicRewardSeedForNode(123, 22), isNot(shopSeedForNode(123, 22)));
+      expect(relicRewardSeedForNode(123, 22), isNot(eventSeedForNode(123, 22)));
       expect(
         relicRewardSeedForNode(123, 22),
         isNot(relicRewardSeedForNode(123, 23)),
@@ -166,6 +169,13 @@ void main() {
       );
     });
 
+    test('업보 99의 정예 승리는 보너스 3을 100에서 멈춘다', () {
+      final content = _content(startingKarma: 99);
+      final won = _winElite(seed: 35, content: content);
+
+      expect(replayRun(won, tuning: _tuning, content: content).karma, 100);
+    });
+
     test('빈 유물 풀로 정예에 진입하면 즉시 명확하게 거부한다', () {
       final content = _contentWithoutRelics();
       final beforeElite = _beforeElite(seed: 33, content: content);
@@ -214,8 +224,9 @@ void main() {
   });
 }
 
-RunContent _content() => RunContent(
+RunContent _content({int startingKarma = 0}) => RunContent(
   maxHp: 80,
+  startingKarma: startingKarma,
   deck: List.filled(8, _finisher),
   encounterPool: [
     for (var i = 0; i < 3; i++)
