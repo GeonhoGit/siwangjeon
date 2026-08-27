@@ -17,6 +17,7 @@ import 'package:siwangjeon/data/m1_relics.dart';
 import 'package:siwangjeon/domain/combat/combat_engine.dart';
 import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/model/card.dart';
+import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/game_event.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
 import 'package:siwangjeon/ui/labels.dart';
@@ -181,6 +182,42 @@ class _HealingEventCombatController extends CombatController {
   }
 }
 
+class _PhasedEnemyCombatController extends CombatController {
+  @override
+  CombatSession build() {
+    final result = beginCombat(
+      seed: 7,
+      hp: startingHp,
+      maxHp: startingHp,
+      deck: starterDeck,
+      enemies: [
+        Enemy(
+          id: 'phase_boss',
+          name: '시험 염라',
+          hp: 80,
+          maxHp: 80,
+          pattern: const [EnemyDefend(0)],
+          phases: [
+            EnemyPhase(pattern: const [EnemyDefend(0)]),
+            EnemyPhase(pattern: const [EnemyAttack(8, times: 2)]),
+          ],
+          phaseIndex: 1,
+        ),
+        defaultEncounter().first,
+      ],
+    );
+
+    return CombatSession(
+      seed: 7,
+      state: result.state,
+      lastEvents: const [
+        EnemyPhaseChanged(enemyIndex: 0, message: '도메인이 만든 전환 문구'),
+      ],
+      actionLog: const [],
+    );
+  }
+}
+
 Rect paintBounds(WidgetTester tester, Finder finder) {
   expect(finder, findsOneWidget);
   final box = tester.renderObject<RenderBox>(finder);
@@ -297,6 +334,31 @@ double largestScreenBlankBand(WidgetTester tester) {
 }
 
 void main() {
+  testWidgets('페이즈 상태와 도메인 전환 이벤트를 전투 화면이 각각 재생한다', (tester) async {
+    await pumpCombat(
+      tester,
+      device: _galaxyS25Ultra,
+      textScale: 1.3,
+      controller: _PhasedEnemyCombatController.new,
+    );
+
+    try {
+      expect(
+        find.byKey(const ValueKey('enemy-phase-phase_boss')),
+        findsOneWidget,
+      );
+      expect(find.text('제2페이즈'), findsOneWidget);
+      expect(find.text('도메인이 만든 전환 문구'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('enemy-phase-enemy_agwi')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    } finally {
+      await disposeTree(tester);
+    }
+  });
+
   testWidgets('체력 회복 이벤트를 전투 화면이 재생한다', (tester) async {
     await pumpCombat(tester, controller: _HealingEventCombatController.new);
 

@@ -717,6 +717,12 @@ class _Sim {
       phaseIndex: enemy.phaseIndex + 1,
       patternIndex: 0,
     );
+    events.add(
+      EnemyPhaseChanged(
+        enemyIndex: index,
+        message: '${enemy.name} · 제${enemy.phaseIndex + 2}페이즈 돌입',
+      ),
+    );
   }
 
   void _damagePlayer(int base, {Map<StatusId, int>? attacker}) {
