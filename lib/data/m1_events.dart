@@ -82,13 +82,13 @@ final List<RunEventDef> m1Events = List.unmodifiable([
         id: 'falsify',
         label: '아직 깨끗한 장부를 위조한다',
         effect: RunEventEffect.falsifyLedger,
-        availableKarmaBands: {KarmaBand.clean, KarmaBand.ordinary},
+        availableKarmaBands: {KarmaBand.pure, KarmaBand.ordinary},
       ),
       RunEventChoice(
         id: 'confess',
         label: '쌓인 기록을 돈으로 고친다',
         effect: RunEventEffect.confessLedger,
-        availableKarmaBands: {KarmaBand.turbid, KarmaBand.evil},
+        availableKarmaBands: {KarmaBand.turbid, KarmaBand.wicked},
       ),
       RunEventChoice(
         id: 'seal',

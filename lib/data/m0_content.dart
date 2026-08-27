@@ -12,6 +12,7 @@ library;
 
 import '../domain/effect/card_effect.dart';
 import '../domain/model/card.dart';
+import '../domain/model/boss.dart';
 import '../domain/model/enemy.dart';
 import '../domain/model/status.dart';
 import '../domain/run/run_content.dart';
@@ -410,6 +411,45 @@ Enemy nachal() => const Enemy(
   ],
 );
 
+/// 염라대왕 — 49일의 업을 장부대로 읽는 1막 시왕.
+///
+/// 1페이즈의 공격·방어·취약은 청정과 평범 모두에게 기준 심판을 견디며 싸울
+/// 시간을 준다. 2페이즈의 연타·약화·강공은 "지금의 강한 업 카드"가 만든
+/// 악업이 처음부터 맞닥뜨리는 압박이다. 탁함의 독 부과는 아직 2페이즈로
+/// 떨어지지는 않았어도, 쌓인 업이 전투 시간을 늘려 값을 치르게 한다.
+BossDef yeomra() => BossDef(
+  enemy: Enemy(
+    id: 'boss_yeomra',
+    name: '염라대왕',
+    hp: 96,
+    maxHp: 96,
+    pattern: const [
+      EnemyAttack(10),
+      EnemyDefend(8),
+      EnemyInflict(StatusId.vulnerable, 2),
+    ],
+    phases: [
+      EnemyPhase(
+        pattern: const [
+          EnemyAttack(10),
+          EnemyDefend(8),
+          EnemyInflict(StatusId.vulnerable, 2),
+        ],
+      ),
+      EnemyPhase(
+        pattern: const [
+          EnemyAttack(8, times: 2),
+          EnemyInflict(StatusId.weak, 2),
+          EnemyAttack(15),
+        ],
+      ),
+    ],
+  ),
+  // 탁함의 추가 순환은 즉시 2페이즈에 빠지지는 않아도, 지속 피해로 장기전을
+  // 강요한다. 따라서 업 50~79의 "추가 패턴"이 단순 체력 증가와 겹치지 않는다.
+  turbidExtraMove: const EnemyInflict(StatusId.poison, 2),
+);
+
 /// M0의 기본 조우. §8.1의 2번 질문("세로 화면에서 카드 5장 + 적이
 /// 답답하지 않은가")은 적 3마리를 실제로 보아야 물을 수 있다. 중독·약화·큰 예고를
 /// 함께 둬 한 화면에서 서로 다른 다음 행동을 읽게 하되, 체력 합계는 M0 한 전투가
@@ -425,6 +465,7 @@ RunContent m0RunContent() => RunContent(
   maxHp: startingHp,
   deck: starterDeck,
   encounterPool: [...defaultEncounter(), yacha(), nachal()],
+  bossPool: [yeomra()],
   cardRewardPool: cardRewardPool,
   events: m1Events,
   relicRewardPool: m1Relics,

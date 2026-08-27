@@ -38,7 +38,7 @@ class RunTuning {
     ],
     this.combatEncounterSize = 3,
     this.eliteEncounterSize = 3,
-    this.bossEncounterSize = 3,
+    this.bossEncounterSize = 1,
     this.cardRewardChoiceCount = 3,
     this.relicRewardChoiceCount = 3,
     this.baseMoneyReward = 30,
@@ -52,6 +52,8 @@ class RunTuning {
     this.cleanKarmaMax = 19,
     this.ordinaryKarmaMax = 49,
     this.turbidKarmaMax = 79,
+    this.pureBossHpReductionPercent = 20,
+    this.wickedBossRelicCount = 1,
   }) : assert(bossesPerAct == 1),
        assert(nodesPerAct > 1),
        assert(minNodesPerAct > 0),
@@ -74,6 +76,7 @@ class RunTuning {
        assert(combatEncounterSize > 0),
        assert(eliteEncounterSize > 0),
        assert(bossEncounterSize > 0),
+       assert(bossEncounterSize == 1),
        assert(cardRewardChoiceCount > 0),
        assert(relicRewardChoiceCount > 0),
        assert(baseMoneyReward >= 0),
@@ -86,7 +89,10 @@ class RunTuning {
        assert(wildCampRepentMoneyCost >= 0),
        assert(cleanKarmaMax >= 0),
        assert(ordinaryKarmaMax >= cleanKarmaMax),
-       assert(turbidKarmaMax >= ordinaryKarmaMax);
+       assert(turbidKarmaMax >= ordinaryKarmaMax),
+       assert(pureBossHpReductionPercent >= 0),
+       assert(pureBossHpReductionPercent < 100),
+       assert(wickedBossRelicCount > 0);
 
   /// 기획서 §2.1의 “7 노드마다 시왕 심판”과 §4.1의 “막당 약 15개”는
   /// 함께 만족할 수 없다. 사용자는 막당 마지막 시왕 1명과 방문 깊이 15개를
@@ -144,8 +150,8 @@ class RunTuning {
   /// 전용 적을 도입할 다음 단계에서 이 자리가 정예 구성을 가리킨다.
   final int eliteEncounterSize;
 
-  /// 전용 보스 적이 생기기 전의 임시 구성 수. M1에서는 M0 적 풀을 재사용하며,
-  /// 전용 보스를 도입할 다음 단계에서 이 자리가 보스 구성을 가리킨다.
+  /// 시왕 심판에 배치할 적 수. M1의 심판은 잡몹 셋이 아닌 시왕 1명이며,
+  /// 이후 막에서도 한 심판을 한 보스로 유지한다.
   final int bossEncounterSize;
 
   /// §2.1의 전투 카드 보상 후보 수. M1-3에서는 항상 이 중 하나를 고른다.
@@ -191,6 +197,12 @@ class RunTuning {
   final int ordinaryKarmaMax;
   final int turbidKarmaMax;
 
+  /// 청정 심판에서 줄이는 시왕 최대 체력 비율 (§3.3).
+  final int pureBossHpReductionPercent;
+
+  /// 악업 심판 승리 시 즉시 지급하는 유물 수.
+  final int wickedBossRelicCount;
+
   /// 사건 결과의 모든 수치. data의 사건 정의는 [RunEventEffect]만 고르므로,
   /// 콘텐츠 문구를 고쳐도 밸런스 수치가 흩어지지 않는다.
   RunEventDelta eventDeltaFor(RunEventEffect effect) => switch (effect) {
@@ -219,10 +231,10 @@ class RunTuning {
   };
 
   KarmaBand karmaBandFor(int karma) {
-    if (karma <= cleanKarmaMax) return KarmaBand.clean;
+    if (karma <= cleanKarmaMax) return KarmaBand.pure;
     if (karma <= ordinaryKarmaMax) return KarmaBand.ordinary;
     if (karma <= turbidKarmaMax) return KarmaBand.turbid;
-    return KarmaBand.evil;
+    return KarmaBand.wicked;
   }
 
   bool isBranchingDepth(int depth) =>

@@ -689,6 +689,8 @@ class _Sim {
       hp: enemy.hp - through < 0 ? 0 : enemy.hp - through,
     );
 
+    _advanceEnemyPhaseIfNeeded(index);
+
     events.add(
       DamageDealt(targetIndex: index, amount: through, blocked: blocked),
     );
@@ -700,6 +702,21 @@ class _Sim {
     if (through > 0) {
       trigger(RelicTrigger.playerDamageDealt, target: index);
     }
+  }
+
+  void _advanceEnemyPhaseIfNeeded(int index) {
+    final enemy = enemies[index];
+    if (!enemy.isAlive || !enemy.canAdvancePhase) return;
+
+    // `hp * 100` 비교는 부동 소수점 경계 오차를 피한다. 전이에는 상태와
+    // [CombatTuning]만 쓰므로 같은 액션 로그를 재생해도 새 난수를 뽑지 않는다.
+    if (enemy.hp * 100 > enemy.maxHp * tuning.enemyPhaseTwoThresholdPercent) {
+      return;
+    }
+    enemies[index] = enemy.copyWith(
+      phaseIndex: enemy.phaseIndex + 1,
+      patternIndex: 0,
+    );
   }
 
   void _damagePlayer(int base, {Map<StatusId, int>? attacker}) {

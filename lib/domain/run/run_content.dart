@@ -7,6 +7,7 @@
 library;
 
 import '../model/card.dart';
+import '../model/boss.dart';
 import '../model/enemy.dart';
 import '../model/relic.dart';
 import 'run_event.dart';
@@ -16,6 +17,7 @@ class RunContent {
     required this.maxHp,
     required List<CardDef> deck,
     required List<Enemy> encounterPool,
+    List<BossDef> bossPool = const [],
     this.startingKarma = 0,
     this.startingMoney = 0,
     required List<CardDef> cardRewardPool,
@@ -24,6 +26,7 @@ class RunContent {
     List<RelicDef> relicRewardPool = const [],
   }) : deck = List.unmodifiable(deck),
        encounterPool = List.unmodifiable(encounterPool),
+       bossPool = List.unmodifiable(bossPool),
        cardRewardPool = List.unmodifiable(cardRewardPool),
        shopCardPool = List.unmodifiable(shopCardPool ?? cardRewardPool),
        events = List.unmodifiable(events),
@@ -54,6 +57,10 @@ class RunContent {
         'encounterPool',
         '적 구성용 M0 적 풀이 비어 있을 수 없다',
       );
+    }
+    if (this.bossPool.map((boss) => boss.enemy.id).toSet().length !=
+        this.bossPool.length) {
+      throw ArgumentError.value(bossPool, 'bossPool', '시왕 id는 고유해야 한다');
     }
     if (cardRewardPool.isEmpty) {
       throw ArgumentError.value(
@@ -112,6 +119,10 @@ class RunContent {
 
   /// 노드 진입 때 `RngStream.encounter`로 뽑을 M0 적 원형.
   final List<Enemy> encounterPool;
+
+  /// 시왕 심판 전용 콘텐츠. 빈 기본값은 보스에 도달하지 않는 기존 전투 단위
+  /// 테스트와의 호환을 위한 것이며, 실제 보스 노드 진입은 엔진이 거부한다.
+  final List<BossDef> bossPool;
 
   /// 전투 승리 뒤 `RngStream.reward`로 뽑을 카드 정의.
   ///
