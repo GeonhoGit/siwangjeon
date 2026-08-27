@@ -214,6 +214,16 @@ Rect _layoutBounds(WidgetTester tester, Finder finder) {
   return box.localToGlobal(Offset.zero) & box.size;
 }
 
+Finder _darkRelicPanelsWithin(Finder ancestor) => find.descendant(
+  of: ancestor,
+  matching: find.byWidgetPredicate((widget) {
+    if (widget is! DecoratedBox) return false;
+    final decoration = widget.decoration;
+    return decoration is BoxDecoration &&
+        decoration.color == const Color(0xFF332B31);
+  }),
+);
+
 Future<void> _disposeTree(WidgetTester tester) =>
     tester.pumpWidget(const SizedBox.shrink());
 
@@ -459,6 +469,52 @@ void main() {
       expect(find.text(chosen.name), findsOneWidget);
       expect(find.text('발동: ${preview.triggerLabel}'), findsOneWidget);
       expect(find.text(preview.effectLabel), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('유물 보상은 버튼 표면을 쓰고 보유 목록만 어두운 패널을 그린다', (tester) async {
+    final rewardSession = _relicRewardSession();
+    await _pumpStaticRun(
+      tester,
+      session: rewardSession,
+      device: _galaxyS25Ultra,
+      textScale: 1.0,
+    );
+
+    try {
+      for (final relic in rewardSession.progress.pendingRelicReward!.relics) {
+        expect(
+          _darkRelicPanelsWithin(
+            find.byKey(ValueKey('reward-relic-${relic.id}')),
+          ),
+          findsNothing,
+          reason: '유물 보상은 FilledButton의 표면과 전경색을 사용해야 한다.',
+        );
+      }
+    } finally {
+      await _disposeTree(tester);
+    }
+
+    await _pumpStaticRun(
+      tester,
+      session: _relicInventorySession(),
+      device: _galaxyS25Ultra,
+      textScale: 1.0,
+    );
+
+    try {
+      await tester.tap(find.byKey(const ValueKey('map-relic-inventory')));
+      await tester.pumpAndSettle();
+
+      expect(
+        _darkRelicPanelsWithin(
+          find.byKey(const ValueKey('relic-inventory-list')),
+        ),
+        findsAtLeastNWidgets(1),
+        reason: '보유 유물 목록은 어두운 패널 위에 내용을 표시해야 한다.',
+      );
     } finally {
       await _disposeTree(tester);
     }

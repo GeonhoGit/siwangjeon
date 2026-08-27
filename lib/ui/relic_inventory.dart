@@ -113,11 +113,20 @@ Future<void> _showRelicInventory(BuildContext context, List<RelicDef> relics) =>
                           itemCount: relics.length,
                           separatorBuilder: (context, index) =>
                               const SizedBox(height: 8),
-                          itemBuilder: (context, index) => RelicSummary(
-                            key: ValueKey(
-                              'owned-relic-$index-${relics[index].id}',
+                          itemBuilder: (context, index) => DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF332B31),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            relic: relics[index],
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: RelicSummary(
+                                key: ValueKey(
+                                  'owned-relic-$index-${relics[index].id}',
+                                ),
+                                relic: relics[index],
+                              ),
+                            ),
                           ),
                         ),
                 ),
@@ -136,27 +145,15 @@ class RelicSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final preview = previewRelic(relic);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFF332B31),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              relic.name,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text('발동: ${preview.triggerLabel}'),
-            const SizedBox(height: 4),
-            Text(preview.effectLabel),
-          ],
-        ),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(relic.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text('발동: ${preview.triggerLabel}'),
+        const SizedBox(height: 4),
+        Text(preview.effectLabel),
+      ],
     );
   }
 }
