@@ -278,6 +278,7 @@ void main() {
       );
 
       expect(result.events.whereType<EnemyDied>().single.index, 0);
+      expect(result.events.whereType<HpGained>().single.amount, 1);
       expect(result.state.enemies.single.hp, 0);
       expect(result.state.hp, 80);
     });

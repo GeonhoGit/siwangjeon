@@ -49,6 +49,16 @@ final class EnergyGained extends GameEvent {
   final int amount;
 }
 
+/// 회복으로 실제로 늘어난 플레이어 체력.
+///
+/// 최대 체력에 막혀 늘지 않은 양은 포함하지 않는다. UI는 전투 상태를 다시 읽지
+/// 않고 이 이벤트만 재생해 회복 연출을 만든다 (§7.2).
+final class HpGained extends GameEvent {
+  const HpGained(this.amount);
+
+  final int amount;
+}
+
 final class StatusApplied extends GameEvent {
   const StatusApplied({
     required this.targetIndex,
