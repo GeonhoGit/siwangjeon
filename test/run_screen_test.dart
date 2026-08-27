@@ -229,6 +229,42 @@ Finder _darkRelicPanelsWithin(Finder ancestor) => find.descendant(
 Future<void> _disposeTree(WidgetTester tester) =>
     tester.pumpWidget(const SizedBox.shrink());
 
+RunSession _enhancedShopSession() {
+  final map = generateActOneMap(702);
+  final node = map.nodes.first;
+  const enhancedId = 'enhanced-ui-card';
+  final deckCard = RunDeckCard(
+    instanceId: enhancedId,
+    card: _rewardA,
+    isEnhanced: true,
+  );
+  final progress = RunProgress(
+    map: map,
+    visitedNodeIds: [node.id],
+    hp: 80,
+    maxHp: 80,
+    karma: 0,
+    money: 100,
+    deckCards: [
+      deckCard,
+      RunDeckCard(instanceId: 'plain-ui-card', card: _rewardB),
+    ],
+    pendingShop: ShopInventory(nodeId: node.id, cards: const [_rewardC]),
+  );
+  return RunSession(
+    state: RunState(
+      seed: 702,
+      characterId: 'm0',
+      actionLog: [MoveToNode(nodeId: node.id)],
+    ),
+    progress: progress,
+    legalActions: [
+      RemoveShopCard(nodeId: node.id, cardInstanceId: enhancedId),
+      LeaveShop(nodeId: node.id),
+    ],
+  );
+}
+
 Future<void> _moveUntilCombat(WidgetTester tester) async {
   for (var depth = 0; depth < 15; depth++) {
     if (find.byType(CombatScreen).evaluate().isNotEmpty) return;
@@ -892,6 +928,66 @@ void main() {
     }
   });
 
+  testWidgets('야장의 강화는 대상 카드만 + 이름과 효과로 바꾸고 상점 목록에도 남긴다', (tester) async {
+    final seed = _seedForFirstNode(RunNodeType.wildCamp);
+    final initialState = _enteredFirstNode(seed);
+    await _pumpRun(
+      tester,
+      seed: seed,
+      content: _nonCombatContent(),
+      initialState: initialState,
+    );
+
+    try {
+      final container = _containerFor(tester);
+      expect(find.byKey(const ValueKey('wild-camp-enhance')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('wild-camp-enhance')));
+      await tester.pump();
+
+      const enhancedId = 'start:0:ui_reward_a';
+      expect(
+        find.byKey(const ValueKey('wild-camp-enhance-screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('wild-camp-enhance-$enhancedId')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('wild-camp-enhance-$enhancedId')),
+      );
+      await tester.pump();
+
+      final enhanced = container
+          .read(runControllerProvider)
+          .progress
+          .deckCards
+          .singleWhere((card) => card.instanceId == enhancedId);
+      expect(enhanced.isEnhanced, isTrue);
+      expect(enhanced.card.name, '${_rewardA.name}+');
+      expect(find.byType(RunMapScreen), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+
+    await _pumpStaticRun(
+      tester,
+      session: _enhancedShopSession(),
+      device: _pixel8,
+      textScale: 1.3,
+    );
+    try {
+      expect(find.textContaining('${_rewardA.name}+'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('shop-remove-enhanced-ui-card')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
   testWidgets('사건은 legalRunActions가 낸 선택지만 보이고 지옥의 장부 분기를 숨긴다', (tester) async {
     final seed = _seedForFirstNode(RunNodeType.event);
     final ledger = m1Events.singleWhere(
@@ -1042,6 +1138,10 @@ void main() {
           _expectMinimumTapTargets(
             tester,
             find.byKey(const ValueKey('wild-camp-repent')),
+          );
+          _expectMinimumTapTargets(
+            tester,
+            find.byKey(const ValueKey('wild-camp-enhance')),
           );
           expect(tester.takeException(), isNull, reason: device.name);
         } finally {

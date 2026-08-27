@@ -20,11 +20,11 @@ void main() {
     });
   });
 
-  test('겹친 손패에 남는 이름 앞 두 글자는 M0의 20종을 모두 구분한다', () {
+  test('겹친 손패에 남는 이름 앞 두 글자는 M1의 23종을 모두 구분한다', () {
     final labels = m0Cards.map(handCardLabel).toList();
 
-    expect(labels, hasLength(20));
-    expect(labels.toSet(), hasLength(20));
+    expect(labels, hasLength(23));
+    expect(labels.toSet(), hasLength(23));
     expect(handCardLabel(defend), '수비');
     expect(handCardLabel(guardianSigil), '수호');
   });

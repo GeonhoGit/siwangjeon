@@ -70,6 +70,8 @@ void main() {
           RemoveShopCard(nodeId: 4, cardInstanceId: 'start:1:card_strike'),
           LeaveShop(nodeId: 4),
           ChooseWildCampOption(nodeId: 5, choice: WildCampChoice.repent),
+          ChooseWildCampOption(nodeId: 6, choice: WildCampChoice.enhance),
+          EnhanceWildCampCard(nodeId: 6, cardInstanceId: 'start:1:card_strike'),
           ChooseEventOption(nodeId: 6, choiceId: 'confess'),
         ],
       );
@@ -87,7 +89,7 @@ void main() {
       });
       expect(restored.seed, state.seed);
       expect(restored.characterId, state.characterId);
-      expect(restored.actionLog, hasLength(9));
+      expect(restored.actionLog, hasLength(11));
       expect(restored.actionLog[0], isA<MoveToNode>());
       expect((restored.actionLog[0] as MoveToNode).nodeId, 3);
       final combat = restored.actionLog[1] as CombatNodeLog;
@@ -113,7 +115,13 @@ void main() {
       final wildCamp = restored.actionLog[7] as ChooseWildCampOption;
       expect(wildCamp.nodeId, 5);
       expect(wildCamp.choice, WildCampChoice.repent);
-      final event = restored.actionLog[8] as ChooseEventOption;
+      final enhanceChoice = restored.actionLog[8] as ChooseWildCampOption;
+      expect(enhanceChoice.nodeId, 6);
+      expect(enhanceChoice.choice, WildCampChoice.enhance);
+      final enhance = restored.actionLog[9] as EnhanceWildCampCard;
+      expect(enhance.nodeId, 6);
+      expect(enhance.cardInstanceId, 'start:1:card_strike');
+      final event = restored.actionLog[10] as ChooseEventOption;
       expect(event.nodeId, 6);
       expect(event.choiceId, 'confess');
     });
