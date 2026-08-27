@@ -84,7 +84,7 @@ CombatResult beginCombat({
   sim.trigger(RelicTrigger.combatStarted);
   sim.events.add(TurnStarted(sim.turn));
   sim.trigger(RelicTrigger.turnStarted);
-  sim.draw(tuning.handSize - sim.hand.length);
+  sim.draw(tuning.handSize);
 
   return sim.finish();
 }
@@ -586,7 +586,7 @@ class _Sim {
           _changeKarma(-tuning.turnEndRelicCleanse);
 
         case EnemyDeathHealEffect():
-          hp = (hp + tuning.enemyDeathRelicHeal).clamp(0, maxHp);
+          _healPlayer(tuning.enemyDeathRelicHeal);
 
         case EnemyDeathBlockEffect():
           block += tuning.enemyDeathRelicBlock;
@@ -721,6 +721,11 @@ class _Sim {
     );
 
     _checkOutcome();
+  }
+
+  void _healPlayer(int amount) {
+    final healedHp = (hp + amount).clamp(0, maxHp);
+    if (healedHp > hp) hp = healedHp;
   }
 
   /// 적의 공격 피해와 예고가 함께 쓰는, 방어도 전 최종 피해량.

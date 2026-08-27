@@ -122,7 +122,7 @@ void main() {
   });
 
   group('유물 전투 해석', () {
-    test('전투 시작 유물은 첫 TurnStarted 전에 능력치·드로우·정화를 적용한다', () {
+    test('전투 시작 드로우 유물은 TurnStarted 전 1장과 기본 5장을 모두 뽑는다', () {
       final result = beginCombat(
         seed: 9,
         hp: 80,
@@ -136,11 +136,25 @@ void main() {
           _relic(const OpeningCleanseEffect()),
         ],
       );
+      final withoutRelic = beginCombat(
+        seed: 9,
+        hp: 80,
+        maxHp: 80,
+        karma: 50,
+        deck: _deck(_cleanGuard),
+        enemies: [_enemy()],
+      );
 
       expect(result.state.statuses[StatusId.strength], 2);
       expect(result.state.karma, 47);
-      expect(result.state.hand, hasLength(5));
-      expect(result.events.whereType<CardsDrawn>().first.cards, hasLength(1));
+      expect(withoutRelic.state.hand, hasLength(5));
+      expect(result.state.hand, hasLength(6));
+      expect(
+        result.events.whereType<CardsDrawn>().map(
+          (event) => event.cards.length,
+        ),
+        [1, 5],
+      );
       expect(
         result.events.indexWhere((event) => event is TurnStarted),
         greaterThan(result.events.indexWhere((event) => event is CardsDrawn)),
@@ -251,24 +265,36 @@ void main() {
       );
     });
 
-    test('적 사망 유물은 사망 이벤트 직후 체력을 회복하고 방어를 얻는다', () {
+    test('적 사망 회복은 EnemyDied와 함께 최대 체력에서 멈춘다', () {
       final state = _start(
         deck: _deck(_fatalStrike),
-        hp: 40,
+        hp: 79,
         enemies: [_enemy(hp: 20)],
-        relics: [
-          _relic(const EnemyDeathHealEffect()),
-          _relic(const EnemyDeathBlockEffect()),
-        ],
+        relics: [_relic(const EnemyDeathHealEffect())],
       );
       final result = applyAction(
         state,
         PlayCard(handIndex: _handIndex(state, _fatalStrike), targetIndex: 0),
       );
 
-      expect(result.events.whereType<EnemyDied>(), hasLength(1));
-      expect(result.state.hp, 42);
+      expect(result.events.whereType<EnemyDied>().single.index, 0);
+      expect(result.state.enemies.single.hp, 0);
+      expect(result.state.hp, 80);
+    });
+
+    test('적 사망 방어 유물은 방어도와 이벤트를 남긴다', () {
+      final state = _start(
+        deck: _deck(_fatalStrike),
+        enemies: [_enemy(hp: 20)],
+        relics: [_relic(const EnemyDeathBlockEffect())],
+      );
+      final result = applyAction(
+        state,
+        PlayCard(handIndex: _handIndex(state, _fatalStrike), targetIndex: 0),
+      );
+
       expect(result.state.block, 5);
+      expect(result.events.whereType<BlockGained>().single.amount, 5);
     });
 
     test('탁함 피격 감쇠는 예고와 실제 피격 모두에서 방어 전에 적용한다', () {
