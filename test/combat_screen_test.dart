@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:siwangjeon/app/app.dart';
 import 'package:siwangjeon/app/combat_controller.dart';
+import 'package:siwangjeon/app/run_content_provider.dart';
 import 'package:siwangjeon/data/m0_content.dart';
 import 'package:siwangjeon/data/m1_relics.dart';
 import 'package:siwangjeon/domain/combat/combat_engine.dart';
@@ -21,6 +22,8 @@ import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/game_event.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
 import 'package:siwangjeon/ui/labels.dart';
+
+import 'support/m1_card_test_content.dart';
 
 class TestDevice {
   const TestDevice({
@@ -69,6 +72,7 @@ Future<void> pumpCombat(
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
   final overrides = [
+    runContentProvider.overrideWithValue(m1TestContent),
     if (seed != null) combatSeedFactoryProvider.overrideWithValue(() => seed),
     if (controller != null) combatControllerProvider.overrideWith(controller),
   ];
@@ -465,7 +469,7 @@ void main() {
       await pumpCombat(
         tester,
         textScale: textScale,
-        controller: () => _FixedHandCombatController(const [confession]),
+        controller: () => _FixedHandCombatController([confession]),
       );
 
       try {
@@ -493,7 +497,7 @@ void main() {
   testWidgets('손패 팬의 위쪽 빈 띠가 남지 않는다', (tester) async {
     await pumpCombat(
       tester,
-      controller: () => _FixedHandCombatController(const [
+      controller: () => _FixedHandCombatController([
         bladeOfGrudge,
         bladeOfGrudge,
         bladeOfGrudge,
@@ -510,7 +514,7 @@ void main() {
     await pumpCombat(
       tester,
       textScale: 1.3,
-      controller: () => _FixedHandCombatController(const [
+      controller: () => _FixedHandCombatController([
         defend,
         bladeOfGrudge,
         defend,
@@ -549,7 +553,7 @@ void main() {
   testWidgets('손패와 턴 종료는 화면 하단 60%에 있다 (§5.1)', (tester) async {
     await pumpCombat(
       tester,
-      controller: () => _FixedHandCombatController(const [
+      controller: () => _FixedHandCombatController([
         bladeOfGrudge,
         bladeOfGrudge,
         bladeOfGrudge,
@@ -632,8 +636,8 @@ void main() {
   testWidgets('Galaxy S25 Ultra의 겹친 손패는 모든 카드의 비용과 구별용 이름 앞부분을 남긴다', (
     tester,
   ) async {
-    for (var start = 0; start < m0Cards.length; start += 5) {
-      final hand = m0Cards.skip(start).take(5).toList();
+    for (var start = 0; start < m1Cards.length; start += 5) {
+      final hand = m1Cards.skip(start).take(5).toList();
       await pumpCombat(
         tester,
         textScale: 0.9,
@@ -671,12 +675,12 @@ void main() {
   });
 
   testWidgets('긴 첫 어절의 이름도 원문 텍스트 하나로 그린다', (tester) async {
-    const card = guardianSigil;
+    final card = guardianSigil;
     await pumpCombat(
       tester,
       textScale: 0.9,
       device: _galaxyS25Ultra,
-      controller: () => _FixedHandCombatController(const [card]),
+      controller: () => _FixedHandCombatController([card]),
     );
 
     try {
@@ -691,7 +695,7 @@ void main() {
   });
 
   testWidgets('카드 이름은 원문 공백을 보존한 텍스트 하나로 그린다', (tester) async {
-    const cards = [
+    final cards = [
       greedyBarrier,
       recoveredEnergy,
       cleanCut,
@@ -777,7 +781,7 @@ void main() {
           tester,
           textScale: textScale,
           device: device,
-          controller: () => _FixedHandCombatController(const [
+          controller: () => _FixedHandCombatController([
             bladeOfGrudge,
             bladeOfGrudge,
             bladeOfGrudge,
@@ -802,7 +806,7 @@ void main() {
           textScale: textScale,
           device: device,
           controller: () =>
-              _FixedHandCombatController(const [bladeOfGrudge, bladeOfGrudge]),
+              _FixedHandCombatController([bladeOfGrudge, bladeOfGrudge]),
         );
 
         expect(tester.takeException(), isNull);
@@ -826,7 +830,7 @@ void main() {
   testWidgets('선택한 가운데 손패 카드는 1.12배로 확대된다 (§5.3)', (tester) async {
     await pumpCombat(
       tester,
-      controller: () => _FixedHandCombatController(const [
+      controller: () => _FixedHandCombatController([
         bladeOfGrudge,
         bladeOfGrudge,
         bladeOfGrudge,
@@ -859,7 +863,7 @@ void main() {
   testWidgets('선택한 손패를 취소하면 120ms 동안 축소된다', (tester) async {
     await pumpCombat(
       tester,
-      controller: () => _FixedHandCombatController(const [
+      controller: () => _FixedHandCombatController([
         bladeOfGrudge,
         bladeOfGrudge,
         bladeOfGrudge,
@@ -903,7 +907,7 @@ void main() {
   testWidgets('다른 손패를 선택하면 이전 카드가 축소되고 새 카드가 확대된다', (tester) async {
     await pumpCombat(
       tester,
-      controller: () => _FixedHandCombatController(const [
+      controller: () => _FixedHandCombatController([
         bladeOfGrudge,
         bladeOfGrudge,
         bladeOfGrudge,
@@ -953,13 +957,8 @@ void main() {
   testWidgets('카드 사용으로 손패가 줄면 남은 카드가 축소 애니메이션하지 않는다', (tester) async {
     await pumpCombat(
       tester,
-      controller: () => _FixedHandCombatController(const [
-        defend,
-        defend,
-        defend,
-        defend,
-        defend,
-      ]),
+      controller: () =>
+          _FixedHandCombatController([defend, defend, defend, defend, defend]),
     );
 
     try {
@@ -996,7 +995,7 @@ void main() {
     await pumpCombat(
       tester,
       textScale: 1.3,
-      controller: () => _FixedHandCombatController(const [
+      controller: () => _FixedHandCombatController([
         bladeOfGrudge,
         bladeOfGrudge,
         bladeOfGrudge,
@@ -1080,7 +1079,7 @@ void main() {
             tester,
             textScale: textScale,
             device: device,
-            controller: () => _FixedHandCombatController(const [
+            controller: () => _FixedHandCombatController([
               bladeOfGrudge,
               bladeOfGrudge,
               bladeOfGrudge,
@@ -1243,7 +1242,7 @@ void main() {
     await pumpCombat(
       tester,
       textScale: 1.3,
-      controller: () => _FixedHandCombatController(const [
+      controller: () => _FixedHandCombatController([
         confession,
         greatPurification,
         steadyBreath,

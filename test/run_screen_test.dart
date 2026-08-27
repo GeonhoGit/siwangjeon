@@ -3,8 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:siwangjeon/app/app.dart';
 import 'package:siwangjeon/app/run_controller.dart';
-import 'package:siwangjeon/data/m0_content.dart'
-    show cleanCut, greatPurification, ironGuard, steadyBreath;
 import 'package:siwangjeon/data/m1_events.dart';
 import 'package:siwangjeon/data/m1_relics.dart';
 import 'package:siwangjeon/domain/combat/relic_preview.dart';
@@ -25,6 +23,9 @@ import 'package:siwangjeon/domain/run/run_tuning.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
 import 'package:siwangjeon/ui/relic_inventory.dart';
 import 'package:siwangjeon/ui/run_screen.dart';
+
+import 'support/m1_card_test_content.dart'
+    show cleanCut, greatPurification, ironGuard, m1TestContent, steadyBreath;
 
 class _TestDevice {
   const _TestDevice({
@@ -104,7 +105,7 @@ const _rewardC = CardDef(
 );
 
 const _rewardCards = [_rewardA, _rewardB, _rewardC];
-const _nonCombatCardPool = [
+final _nonCombatCardPool = [
   _rewardA,
   _rewardB,
   _rewardC,
@@ -150,7 +151,7 @@ Future<void> _pumpRun(
     ProviderScope(
       overrides: [
         runSeedFactoryProvider.overrideWithValue(() => seed),
-        if (content != null) runContentProvider.overrideWithValue(content),
+        runContentProvider.overrideWithValue(content ?? m1TestContent),
         if (initialState != null)
           runInitialStateProvider.overrideWithValue(initialState),
       ],
