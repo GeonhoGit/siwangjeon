@@ -13,6 +13,7 @@ import '../domain/combat/combat_engine.dart';
 import '../domain/model/card.dart';
 import '../domain/run/run_action.dart';
 import '../domain/run/run_engine.dart';
+import '../domain/run/run_event.dart';
 import '../domain/run/run_map.dart';
 import '../domain/run/run_node_type.dart';
 import '../domain/run/run_tuning.dart';
@@ -770,6 +771,10 @@ class _EventScreen extends StatelessWidget {
       for (final action in session.legalActions.whereType<ChooseEventOption>())
         action.choiceId: action,
     };
+    final previewsByChoiceId = {
+      for (final preview in pendingEvent.choicePreviews)
+        preview.choiceId: preview,
+    };
 
     return _NodeChoiceScaffold(
       screenKey: const ValueKey('event-screen'),
@@ -785,18 +790,63 @@ class _EventScreen extends StatelessWidget {
           // 노출하면 도메인이 감춘 업 구간 정보를 UI가 새로 알려 주게 된다.
           for (final choice in pendingEvent.event.choices)
             if (optionsById[choice.id] case final action?) ...[
-              FilledButton(
-                key: ValueKey('event-choice-${choice.id}'),
-                onPressed: () => onChoose(action),
-                style: FilledButton.styleFrom(
-                  alignment: Alignment.centerLeft,
-                  minimumSize: const Size.fromHeight(64),
-                  padding: const EdgeInsets.all(16),
-                ),
-                child: Text(choice.label),
+              _EventChoiceButton(
+                choice: choice,
+                preview: previewsByChoiceId[choice.id]!,
+                action: action,
+                onChoose: onChoose,
               ),
               const SizedBox(height: 12),
             ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EventChoiceButton extends StatelessWidget {
+  const _EventChoiceButton({
+    required this.choice,
+    required this.preview,
+    required this.action,
+    required this.onChoose,
+  });
+
+  final RunEventChoice choice;
+  final RunEventChoicePreview preview;
+  final ChooseEventOption action;
+  final ValueChanged<RunAction> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final gainedCard = preview.gainedCard;
+    final cardEffects = gainedCard == null
+        ? const <String>[]
+        : _cardEffectLines(gainedCard);
+
+    return FilledButton(
+      key: ValueKey('event-choice-${choice.id}'),
+      onPressed: () => onChoose(action),
+      style: FilledButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        minimumSize: const Size.fromHeight(64),
+        padding: const EdgeInsets.all(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            choice.label,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(preview.outcomeLabels.join(' · ')),
+          if (gainedCard != null) ...[
+            const SizedBox(height: 4),
+            Text(preview.gainedCardLabel!),
+            for (final effect in cardEffects) Text(effect),
+          ],
         ],
       ),
     );

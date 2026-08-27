@@ -148,12 +148,63 @@ class WildCampVisit {
   final int nodeId;
 }
 
+/// 사건 선택지 하나가 화면에 보여 줄 결과.
+///
+/// 수치의 해석과 부호 표기는 [RunTuning.eventDeltaFor]를 읽는 domain에서 끝낸다.
+/// UI가 같은 수치를 다시 계산하면 실제 사건 결과와 표시가 갈라질 수 있다.
+class RunEventChoicePreview {
+  RunEventChoicePreview({
+    required this.choiceId,
+    required List<String> outcomeLabels,
+    this.gainedCard,
+    this.gainedCardLabel,
+  }) : outcomeLabels = List.unmodifiable(outcomeLabels);
+
+  final String choiceId;
+  final List<String> outcomeLabels;
+  final CardDef? gainedCard;
+  final String? gainedCardLabel;
+}
+
 /// 노드별 reward 시드에서 골라진 사건과 아직 선택하지 않은 문맥.
 class PendingRunEvent {
-  const PendingRunEvent({required this.nodeId, required this.event});
+  PendingRunEvent({
+    required this.nodeId,
+    required this.event,
+    required List<RunEventChoicePreview> choicePreviews,
+  }) : choicePreviews = List.unmodifiable(choicePreviews);
 
   final int nodeId;
   final RunEventDef event;
+  final List<RunEventChoicePreview> choicePreviews;
+}
+
+/// 사건 결과를 실제 적용 규칙과 같은 tuning·content에서 화면용으로 만든다.
+RunEventChoicePreview eventChoicePreviewFor(
+  RunEventChoice choice, {
+  RunTuning tuning = RunTuning.m1,
+  RunContent? content,
+}) {
+  final delta = tuning.eventDeltaFor(choice.effect);
+  final gainedCardId = choice.gainedCardId;
+  final gainedCard = gainedCardId == null
+      ? null
+      : _eventCardFor(content, gainedCardId);
+  final outcomeLabels = [
+    if (delta.hp != 0) '체력 ${_signedDelta(delta.hp)}',
+    if (delta.karma != 0) '업 ${_signedDelta(delta.karma)}',
+    if (delta.money != 0) '노잣돈 ${_signedDelta(delta.money)}',
+  ];
+  if (outcomeLabels.isEmpty && gainedCard == null) {
+    outcomeLabels.add('변화 없음');
+  }
+
+  return RunEventChoicePreview(
+    choiceId: choice.id,
+    outcomeLabels: outcomeLabels,
+    gainedCard: gainedCard,
+    gainedCardLabel: gainedCard == null ? null : '카드 획득 ${gainedCard.name}',
+  );
 }
 
 /// 새 런의 저장 가능한 뼈대를 만든다.
@@ -359,13 +410,22 @@ RunProgress replayRun(
             case RunNodeType.wildCamp:
               pendingWildCamp = WildCampVisit(nodeId: node.id);
             case RunNodeType.event:
+              final event = eventForNode(
+                runSeed: state.seed,
+                node: node,
+                content: content,
+              );
               pendingEvent = PendingRunEvent(
                 nodeId: node.id,
-                event: eventForNode(
-                  runSeed: state.seed,
-                  node: node,
-                  content: content,
-                ),
+                event: event,
+                choicePreviews: [
+                  for (final choice in event.choices)
+                    eventChoicePreviewFor(
+                      choice,
+                      tuning: tuning,
+                      content: content,
+                    ),
+                ],
               );
           }
         }
@@ -952,6 +1012,8 @@ bool _canApplyEventDelta(RunProgress progress, RunEventDelta delta) {
       progress.karma + delta.karma >= 0 &&
       progress.money + delta.money >= 0;
 }
+
+String _signedDelta(int value) => value > 0 ? '+$value' : '$value';
 
 int _heal(int hp, int amount, int maxHp) {
   final next = hp + amount;
