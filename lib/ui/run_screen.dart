@@ -517,7 +517,7 @@ class _RelicRewardScreen extends StatelessWidget {
             style: FilledButton.styleFrom(
               alignment: Alignment.centerLeft,
               minimumSize: const Size.fromHeight(48),
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.all(16),
             ),
             child: RelicSummary(relic: relic),
           );
