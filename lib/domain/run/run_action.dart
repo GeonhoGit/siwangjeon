@@ -56,6 +56,14 @@ final class ChooseCardReward extends RunAction {
   final String cardId;
 }
 
+/// 정예 유물 보상 후보 하나를 선택한다.
+final class ChooseRelicReward extends RunAction {
+  const ChooseRelicReward({required this.nodeId, required this.relicId});
+
+  final int nodeId;
+  final String relicId;
+}
+
 /// 상점 상품 한 장을 산다. 상품 후보 자체는 노드별 reward 시드에서 다시 만들고,
 /// 로그에는 선택한 콘텐츠 id만 남긴다.
 final class BuyShopCard extends RunAction {

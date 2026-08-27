@@ -20,12 +20,13 @@ import '../domain/run/run_state.dart';
 /// 잘못 해석하면 이후 재생 상태 전체를 믿을 수 없기 때문이다.
 /// 상점·야장·사건 액션이 actionLog의 허용 타입을 넓혔다. 이전 앱은 새 `type`을
 /// 해석할 수 없으므로, 같은 버전으로 저장해 구버전이 조용히 잘못 복원하지 않게
-/// v2로 올린다. v1 저장은 기존 정책대로 안전하게 거부한다.
+/// v3로 올린다. v2 저장은 기존 정책대로 안전하게 거부한다.
 ///
 /// 이번 사건 다양화는 기존 `ChooseEventOption(nodeId, choiceId)`가 해석하는
 /// 콘텐츠 효과만 늘린다. 카드 획득 인스턴스도 노드·선택지에서 재생하므로 액션
-/// JSON 필드나 `{seed, characterId, actionLog}` 골격은 바뀌지 않아 v2를 유지한다.
-const runSaveVersion = 2;
+/// JSON 필드나 `{seed, characterId, actionLog}` 골격은 바뀌지 않아도 새 선택 액션을
+/// 구분해야 하므로 v3를 사용한다.
+const runSaveVersion = 3;
 
 /// 테스트와 앱 배선이 공유하는 런 저장소 경계.
 abstract interface class RunStorage {
@@ -102,6 +103,11 @@ class RunSaveCodec {
       'nodeId': nodeId,
       'cardId': cardId,
     },
+    ChooseRelicReward(:final nodeId, :final relicId) => {
+      'type': 'chooseRelicReward',
+      'nodeId': nodeId,
+      'relicId': relicId,
+    },
     BuyShopCard(:final nodeId, :final cardId) => {
       'type': 'buyShopCard',
       'nodeId': nodeId,
@@ -155,6 +161,12 @@ class RunSaveCodec {
       return ChooseCardReward(
         nodeId: _int(map, 'nodeId'),
         cardId: _string(map, 'cardId'),
+      );
+    }
+    if (type == 'chooseRelicReward') {
+      return ChooseRelicReward(
+        nodeId: _int(map, 'nodeId'),
+        relicId: _string(map, 'relicId'),
       );
     }
     if (type == 'buyShopCard') {

@@ -40,8 +40,9 @@ class RunTuning {
     this.eliteEncounterSize = 3,
     this.bossEncounterSize = 3,
     this.cardRewardChoiceCount = 3,
+    this.relicRewardChoiceCount = 3,
     this.baseMoneyReward = 30,
-    this.eliteMoneyRewardMultiplier = 2,
+    this.eliteKarmaReward = 3,
     this.shopCardChoiceCount = 3,
     this.shopCardPrice = 30,
     this.shopRemoveCardPrice = 60,
@@ -74,8 +75,9 @@ class RunTuning {
        assert(eliteEncounterSize > 0),
        assert(bossEncounterSize > 0),
        assert(cardRewardChoiceCount > 0),
+       assert(relicRewardChoiceCount > 0),
        assert(baseMoneyReward >= 0),
-       assert(eliteMoneyRewardMultiplier > 0),
+       assert(eliteKarmaReward >= 0),
        assert(shopCardChoiceCount > 0),
        assert(shopCardPrice >= 0),
        assert(shopRemoveCardPrice >= 0),
@@ -149,6 +151,8 @@ class RunTuning {
   /// §2.1의 전투 카드 보상 후보 수. M1-3에서는 항상 이 중 하나를 고른다.
   final int cardRewardChoiceCount;
 
+  final int relicRewardChoiceCount;
+
   /// 일반 전투 승리 뒤 즉시 더하는 노잣돈.
   ///
   /// M1에서는 이 값으로 첫 상점의 카드 한 장 또는 야장의 참회 한 번을 정확히
@@ -160,7 +164,7 @@ class RunTuning {
 
   /// 정예전의 임시 보상 배수. 유물이 들어오면 카드 보상과 함께 이 계층에서
   /// 정예 전용 보상으로 확장한다.
-  final int eliteMoneyRewardMultiplier;
+  final int eliteKarmaReward;
 
   /// 상점 한 곳에서 제시하는 서로 다른 카드 수와 카드 한 장의 가격.
   ///

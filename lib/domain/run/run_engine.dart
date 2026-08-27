@@ -7,6 +7,7 @@ import '../model/card.dart';
 import '../model/combat_action.dart';
 import '../model/combat_state.dart';
 import '../model/enemy.dart';
+import '../model/relic.dart';
 import '../rng/rng.dart';
 import 'run_action.dart';
 import 'run_content.dart';
@@ -48,8 +49,10 @@ class RunProgress {
     required this.money,
     List<CardDef>? deck,
     List<RunDeckCard>? deckCards,
+    List<RelicDef> relics = const [],
     this.combat,
     this.pendingCardReward,
+    this.pendingRelicReward,
     this.pendingShop,
     this.pendingWildCamp,
     this.pendingEvent,
@@ -62,7 +65,8 @@ class RunProgress {
        deck = List.unmodifiable(
          deck ??
              (deckCards ?? const <RunDeckCard>[]).map((entry) => entry.card),
-       );
+       ),
+       relics = List.unmodifiable(relics);
 
   final RunMap map;
   final List<int> visitedNodeIds;
@@ -85,12 +89,15 @@ class RunProgress {
   /// [RunDeckCard.instanceId]가 시작 슬롯·보상 노드·상점 상품·사건 선택에 고정된다.
   final List<RunDeckCard> deckCards;
 
+  final List<RelicDef> relics;
+
   /// 현재 전투 중이거나 패배로 끝난 전투 상태. 승리한 전투는 결과를 런 값으로
   /// 반영한 뒤 비워 다음 이동이 가능하게 한다.
   final CombatState? combat;
 
   /// 승리한 전투에서 다시 파생한 3택 1 후보. 저장하지 않고 액션 로그에서 복원한다.
   final CardReward? pendingCardReward;
+  final RelicReward? pendingRelicReward;
 
   /// 비전투 노드는 선택이 끝날 때까지 이동을 잠근다. 후보·사건 자체는 모두
   /// 노드별 시드에서 다시 만들며 저장 대상이 아니다.
@@ -120,6 +127,15 @@ class CardReward {
 
   final int nodeId;
   final List<CardDef> cards;
+}
+
+/// 정예 승리 뒤 선택을 기다리는 유물 후보.
+class RelicReward {
+  RelicReward({required this.nodeId, required List<RelicDef> relics})
+    : relics = List.unmodifiable(relics);
+
+  final int nodeId;
+  final List<RelicDef> relics;
 }
 
 /// 덱 안의 물리적 카드 한 장. id 중복이 가능한 [card]와 달리 [instanceId]는
@@ -234,6 +250,14 @@ List<RunAction> legalRunActions(
     ];
   }
 
+  final pendingRelicReward = progress.pendingRelicReward;
+  if (pendingRelicReward != null) {
+    return [
+      for (final relic in pendingRelicReward.relics)
+        ChooseRelicReward(nodeId: pendingRelicReward.nodeId, relicId: relic.id),
+    ];
+  }
+
   final shop = progress.pendingShop;
   if (shop != null) {
     final canBuy = progress.money >= tuning.shopCardPrice;
@@ -338,12 +362,14 @@ RunProgress replayRun(
   final map = generateActOneMap(state.seed, tuning: tuning);
   final visitedNodeIds = <int>[];
   final deckCards = _initialDeckCards(content?.deck ?? const <CardDef>[]);
+  final relics = <RelicDef>[];
   var hp = content?.maxHp ?? 0;
   final maxHp = content?.maxHp ?? 0;
   var karma = content?.startingKarma ?? 0;
   var money = content?.startingMoney ?? 0;
   CombatState? combat;
   CardReward? pendingCardReward;
+  RelicReward? pendingRelicReward;
   ShopInventory? pendingShop;
   WildCampVisit? pendingWildCamp;
   PendingRunEvent? pendingEvent;
@@ -361,6 +387,9 @@ RunProgress replayRun(
         }
         if (pendingCardReward != null) {
           throw IllegalRunActionError('카드 보상을 고르기 전에는 다음 노드로 이동할 수 없다');
+        }
+        if (pendingRelicReward != null) {
+          throw IllegalRunActionError('유물 보상을 고르기 전에는 다음 노드로 이동할 수 없다');
         }
         if (pendingShop != null) {
           throw IllegalRunActionError('상점 선택을 끝내기 전에는 다음 노드로 이동할 수 없다');
@@ -380,6 +409,7 @@ RunProgress replayRun(
           karma: karma,
           money: money,
           deckCards: deckCards,
+          relics: relics,
         );
         if (!_legalNextNodeIds(progress).contains(nodeId)) {
           throw IllegalRunActionError('로그가 현재 위치에서 갈 수 없는 노드 $nodeId를 가리킨다');
@@ -390,6 +420,15 @@ RunProgress replayRun(
         if (content != null) {
           switch (node.type) {
             case RunNodeType.combat || RunNodeType.elite || RunNodeType.boss:
+              if (node.type == RunNodeType.elite) {
+                // 정예 진입 시점에 풀 구성 오류를 사건 노드와 같은 방식으로 드러낸다.
+                relicRewardForNode(
+                  runSeed: state.seed,
+                  node: node,
+                  content: content,
+                  tuning: tuning,
+                );
+              }
               combat = _beginNodeCombat(
                 runSeed: state.seed,
                 node: node,
@@ -397,6 +436,7 @@ RunProgress replayRun(
                 maxHp: maxHp,
                 karma: karma,
                 deck: deckCards.map((entry) => entry.card).toList(),
+                relics: relics,
                 content: content,
                 tuning: tuning,
               );
@@ -461,13 +501,26 @@ RunProgress replayRun(
             karma = currentCombat.karma;
             combat = null;
             final node = map.nodeById(nodeId);
-            money += moneyRewardForNode(node, tuning: tuning);
-            pendingCardReward = cardRewardForNode(
-              runSeed: state.seed,
-              node: node,
-              content: content!,
-              tuning: tuning,
-            );
+            if (node.type == RunNodeType.elite) {
+              karma = (karma + tuning.eliteKarmaReward).clamp(
+                0,
+                CombatTuning.m0.maxKarma,
+              );
+              pendingRelicReward = relicRewardForNode(
+                runSeed: state.seed,
+                node: node,
+                content: content!,
+                tuning: tuning,
+              );
+            } else {
+              money += moneyRewardForNode(node, tuning: tuning);
+              pendingCardReward = cardRewardForNode(
+                runSeed: state.seed,
+                node: node,
+                content: content!,
+                tuning: tuning,
+              );
+            }
           case CombatOutcome.defeat:
             hp = currentCombat.hp;
             karma = currentCombat.karma;
@@ -506,6 +559,27 @@ RunProgress replayRun(
           ),
         );
         pendingCardReward = null;
+
+      case ChooseRelicReward(:final nodeId, :final relicId):
+        if (outcome != null) {
+          throw IllegalRunActionError('끝난 런에서 유물 보상을 고를 수 없다');
+        }
+        final reward = pendingRelicReward;
+        if (reward == null || reward.nodeId != nodeId) {
+          throw IllegalRunActionError('현재 유물 보상과 맞지 않는 선택이다');
+        }
+        RelicDef? selectedRelic;
+        for (final relic in reward.relics) {
+          if (relic.id == relicId) {
+            selectedRelic = relic;
+            break;
+          }
+        }
+        if (selectedRelic == null) {
+          throw IllegalRunActionError('유물 보상 후보에 없는 유물이다');
+        }
+        relics.add(selectedRelic);
+        pendingRelicReward = null;
 
       case BuyShopCard(:final nodeId, :final cardId):
         if (outcome != null) {
@@ -661,8 +735,10 @@ RunProgress replayRun(
     karma: karma,
     money: money,
     deckCards: deckCards,
+    relics: relics,
     combat: combat,
     pendingCardReward: pendingCardReward,
+    pendingRelicReward: pendingRelicReward,
     pendingShop: pendingShop,
     pendingWildCamp: pendingWildCamp,
     pendingEvent: pendingEvent,
@@ -689,6 +765,11 @@ int encounterSeedForNode(int runSeed, int nodeId) =>
 /// combat·encounter 소금과 다른 값을 써서 스트림과 파생 시드가 겹치지 않게 한다.
 int rewardSeedForNode(int runSeed, int nodeId) =>
     _nodeSeed(runSeed, nodeId, 0x27D4EB2F);
+
+/// 정예 유물 후보는 카드·상점·사건 보상과 독립된 reward 스트림으로 뽑는다.
+/// 보스의 wicked/top-tier 분기는 보스 콘텐츠가 생길 때까지 의도적으로 미룬다.
+int relicRewardSeedForNode(int runSeed, int nodeId) =>
+    _nodeSeed(runSeed, nodeId, 0xA24BAED5);
 
 /// 상점 상품은 카드 보상과 같은 reward 스트림을 쓰되, 보상·전투·조우의 소금과
 /// 겹치지 않는 노드별 시드를 쓴다. 앞 상점의 거래가 다음 상품을 밀지 않는다.
@@ -775,6 +856,44 @@ CardReward cardRewardForNode({
   return CardReward(nodeId: node.id, cards: cards);
 }
 
+RelicReward relicRewardForNode({
+  required int runSeed,
+  required RunNode node,
+  required RunContent content,
+  RunTuning tuning = RunTuning.m1,
+}) {
+  if (node.type != RunNodeType.elite) {
+    throw ArgumentError.value(node, 'node', '정예 노드만 유물 보상을 가진다');
+  }
+  if (content.relicRewardPool.isEmpty) {
+    throw ArgumentError.value(
+      content.relicRewardPool,
+      'relicRewardPool',
+      '정예 노드에는 유물 보상 풀이 필요하다',
+    );
+  }
+  if (tuning.relicRewardChoiceCount > content.relicRewardPool.length) {
+    throw ArgumentError.value(
+      tuning.relicRewardChoiceCount,
+      'tuning relicRewardChoiceCount',
+      '유물 보상 풀보다 많은 서로 다른 후보를 제시할 수 없다',
+    );
+  }
+
+  var rng = Rng.forStream(
+    relicRewardSeedForNode(runSeed, node.id),
+    RngStream.reward,
+  );
+  final available = List<RelicDef>.of(content.relicRewardPool);
+  final relics = <RelicDef>[];
+  for (var i = 0; i < tuning.relicRewardChoiceCount; i++) {
+    final (index, next) = rng.nextInt(available.length);
+    rng = next;
+    relics.add(available.removeAt(index));
+  }
+  return RelicReward(nodeId: node.id, relics: relics);
+}
+
 /// 현재 상점의 서로 다른 상품 후보를 `RngStream.reward`에서 뽑는다.
 ShopInventory shopInventoryForNode({
   required int runSeed,
@@ -829,8 +948,7 @@ int moneyRewardForNode(RunNode node, {RunTuning tuning = RunTuning.m1}) {
     throw ArgumentError.value(node, 'node', '전투가 아닌 노드에는 노잣돈 보상이 없다');
   }
   return switch (node.type) {
-    RunNodeType.elite =>
-      tuning.baseMoneyReward * tuning.eliteMoneyRewardMultiplier,
+    RunNodeType.elite => 0,
     RunNodeType.combat || RunNodeType.boss => tuning.baseMoneyReward,
     RunNodeType.shop ||
     RunNodeType.wildCamp ||
@@ -849,6 +967,7 @@ CombatState _beginNodeCombat({
   required int maxHp,
   required int karma,
   required List<CardDef> deck,
+  required List<RelicDef> relics,
   required RunContent content,
   required RunTuning tuning,
 }) {
@@ -864,6 +983,7 @@ CombatState _beginNodeCombat({
       tuning: tuning,
     ),
     karma: karma,
+    relics: relics,
   ).state;
 }
 
@@ -902,6 +1022,11 @@ bool _sameRunAction(RunAction left, RunAction right) => switch ((left, right)) {
     ChooseCardReward(nodeId: final rightNodeId, cardId: final rightCardId),
   ) =>
     leftNodeId == rightNodeId && leftCardId == rightCardId,
+  (
+    ChooseRelicReward(nodeId: final leftNodeId, relicId: final leftRelicId),
+    ChooseRelicReward(nodeId: final rightNodeId, relicId: final rightRelicId),
+  ) =>
+    leftNodeId == rightNodeId && leftRelicId == rightRelicId,
   (
     BuyShopCard(nodeId: final leftNodeId, cardId: final leftCardId),
     BuyShopCard(nodeId: final rightNodeId, cardId: final rightCardId),

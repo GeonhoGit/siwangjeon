@@ -64,6 +64,7 @@ void main() {
             actions: [PlayCard(handIndex: 2, targetIndex: 1), EndTurn()],
           ),
           ChooseCardReward(nodeId: 3, cardId: 'card_strike'),
+          ChooseRelicReward(nodeId: 3, relicId: 'relic_karma_ledger'),
           BuyShopCard(nodeId: 4, cardId: 'card_defend'),
           RemoveShopCard(nodeId: 4, cardInstanceId: 'start:1:card_strike'),
           LeaveShop(nodeId: 4),
@@ -78,7 +79,7 @@ void main() {
 
       expect(restored.seed, state.seed);
       expect(restored.characterId, state.characterId);
-      expect(restored.actionLog, hasLength(8));
+      expect(restored.actionLog, hasLength(9));
       expect(restored.actionLog[0], isA<MoveToNode>());
       expect((restored.actionLog[0] as MoveToNode).nodeId, 3);
       final combat = restored.actionLog[1] as CombatNodeLog;
@@ -91,17 +92,20 @@ void main() {
       final reward = restored.actionLog[2] as ChooseCardReward;
       expect(reward.nodeId, 3);
       expect(reward.cardId, 'card_strike');
-      final purchase = restored.actionLog[3] as BuyShopCard;
+      final relicReward = restored.actionLog[3] as ChooseRelicReward;
+      expect(relicReward.nodeId, 3);
+      expect(relicReward.relicId, 'relic_karma_ledger');
+      final purchase = restored.actionLog[4] as BuyShopCard;
       expect(purchase.nodeId, 4);
       expect(purchase.cardId, 'card_defend');
-      final removal = restored.actionLog[4] as RemoveShopCard;
+      final removal = restored.actionLog[5] as RemoveShopCard;
       expect(removal.nodeId, 4);
       expect(removal.cardInstanceId, 'start:1:card_strike');
-      expect((restored.actionLog[5] as LeaveShop).nodeId, 4);
-      final wildCamp = restored.actionLog[6] as ChooseWildCampOption;
+      expect((restored.actionLog[6] as LeaveShop).nodeId, 4);
+      final wildCamp = restored.actionLog[7] as ChooseWildCampOption;
       expect(wildCamp.nodeId, 5);
       expect(wildCamp.choice, WildCampChoice.repent);
-      final event = restored.actionLog[7] as ChooseEventOption;
+      final event = restored.actionLog[8] as ChooseEventOption;
       expect(event.nodeId, 6);
       expect(event.choiceId, 'confess');
     });
@@ -115,7 +119,7 @@ void main() {
       final storage = FileRunStorage(documentsDirectory: () async => directory);
 
       const unsupported =
-          '{"version": 1, "seed": 1, "characterId": "m0", "actionLog": []}';
+          '{"version": 2, "seed": 1, "characterId": "m0", "actionLog": []}';
       await file.writeAsString(unsupported);
       expect(await storage.load(), isA<RunLoadRejected>());
       expect(await file.readAsString(), unsupported);

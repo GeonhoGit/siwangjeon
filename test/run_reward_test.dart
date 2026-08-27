@@ -16,7 +16,6 @@ const _rewardTuning = RunTuning(
   nodeTypeWeights: [RunNodeWeight(RunNodeType.combat, 1)],
   cardRewardChoiceCount: 3,
   baseMoneyReward: 17,
-  eliteMoneyRewardMultiplier: 3,
 );
 
 const _finisher = CardDef(
@@ -354,7 +353,7 @@ void main() {
       );
     });
 
-    test('정예전은 일반 전투보다 더 많은 노잣돈을 준다', () {
+    test('정예전은 유물 보상으로 노잣돈을 주지 않는다', () {
       final map = generateActOneMap(88, tuning: _rewardTuning);
       final combat = map.nodes.firstWhere(
         (node) => node.type == RunNodeType.combat,
@@ -363,11 +362,8 @@ void main() {
         (node) => node.type == RunNodeType.elite,
       );
 
-      expect(
-        moneyRewardForNode(elite, tuning: _rewardTuning),
-        moneyRewardForNode(combat, tuning: _rewardTuning) *
-            _rewardTuning.eliteMoneyRewardMultiplier,
-      );
+      expect(moneyRewardForNode(elite, tuning: _rewardTuning), 0);
+      expect(moneyRewardForNode(combat, tuning: _rewardTuning), 17);
     });
 
     test('시작 후 전투 하나를 이긴 첫 상점에는 구매 액션이 있다', () {
