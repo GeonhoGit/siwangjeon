@@ -340,6 +340,7 @@ class _Sim {
     _tickGrudge();
     if (outcome != null) return;
     trigger(RelicTrigger.turnEnded);
+    _checkOutcome();
     if (outcome != null) return;
 
     // §3.1 — 남은 손패 버림.
