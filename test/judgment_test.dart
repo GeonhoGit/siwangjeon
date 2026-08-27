@@ -5,6 +5,7 @@ import 'package:siwangjeon/domain/model/boss.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/combat_action.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
+import 'package:siwangjeon/domain/model/game_event.dart';
 import 'package:siwangjeon/domain/model/relic.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 import 'package:siwangjeon/domain/run/run_action.dart';
@@ -92,14 +93,21 @@ void main() {
         enemies: [judgmentEnemyFor(boss: _boss(hp: 100), karma: 20)],
       ).state;
 
-      final next = applyAction(
+      final result = applyAction(
         state,
         const PlayCard(handIndex: 0, targetIndex: 0),
-      ).state;
+      );
+      final next = result.state;
 
       expect(next.enemies.single.hp, 49);
       expect(next.enemies.single.phaseIndex, 1);
       expect(next.enemies.single.intent, isA<EnemyAttack>());
+      expect(
+        result.events.whereType<EnemyPhaseChanged>().single,
+        isA<EnemyPhaseChanged>()
+            .having((event) => event.enemyIndex, '적 인덱스', 0)
+            .having((event) => event.message, '도메인 안내 문구', '시험 염라 · 제2페이즈 돌입'),
+      );
     });
 
     test('보스 바로 전 런 진행은 도메인 심판 안내를 만든다', () {

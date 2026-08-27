@@ -97,6 +97,17 @@ final class EnemyDied extends GameEvent {
   final int index;
 }
 
+/// 적이 다음 페이즈로 넘어가며 도메인이 정한 안내 문구.
+///
+/// UI는 [message]를 이벤트 띠에 재생만 한다. 페이즈 번호나 적 이름을 화면에서
+/// 다시 조립하면 전이 규칙과 안내 문구가 서로 어긋날 수 있다.
+final class EnemyPhaseChanged extends GameEvent {
+  const EnemyPhaseChanged({required this.enemyIndex, required this.message});
+
+  final int enemyIndex;
+  final String message;
+}
+
 final class TurnEnded extends GameEvent {
   const TurnEnded(this.turn);
 

@@ -481,6 +481,15 @@ class _EnemyView extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(enemy.name, style: const TextStyle(fontSize: 15)),
+                      if (enemy.phaseCount > 1)
+                        Text(
+                          key: ValueKey('enemy-phase-${enemy.id}'),
+                          '제${enemy.phaseIndex + 1}페이즈',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.72),
+                          ),
+                        ),
                       if (incoming != null)
                         Text(
                           '−$incoming',
@@ -641,6 +650,8 @@ class _EventStrip extends StatelessWidget {
           );
         case EnemyDied():
           lines.add('${who(event.index)} 쓰러짐');
+        case EnemyPhaseChanged():
+          lines.add(event.message);
         case DeckReshuffled():
           lines.add('덱 섞음 ${event.count}');
         case CardPlayed():
