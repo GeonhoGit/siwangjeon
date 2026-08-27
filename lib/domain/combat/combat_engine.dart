@@ -21,6 +21,7 @@ import '../model/combat_action.dart';
 import '../model/combat_state.dart';
 import '../model/enemy.dart';
 import '../model/game_event.dart';
+import '../model/relic.dart';
 import '../model/status.dart';
 import '../rng/rng.dart';
 import 'tuning.dart';
@@ -59,6 +60,7 @@ CombatResult beginCombat({
   required List<CardDef> deck,
   required List<Enemy> enemies,
   int karma = 0,
+  List<RelicDef> relics = const [],
   CombatTuning tuning = CombatTuning.m0,
 }) {
   final (drawPile, rng) = Rng.forStream(seed, RngStream.combat).shuffled(deck);
@@ -75,10 +77,13 @@ CombatResult beginCombat({
     discardPile: const [],
     enemies: enemies,
     rng: rng,
+    relics: relics,
   );
 
   final sim = _Sim(start, tuning);
+  sim.trigger(RelicTrigger.combatStarted);
   sim.events.add(TurnStarted(sim.turn));
+  sim.trigger(RelicTrigger.turnStarted);
   sim.draw(tuning.handSize - sim.hand.length);
 
   return sim.finish();
@@ -151,25 +156,7 @@ int? previewDamage(
   CombatTuning tuning = CombatTuning.m0,
 }) {
   final sim = _Sim(state, tuning);
-  var total = 0;
-  var found = false;
-
-  for (final effect in card.effects) {
-    if (effect is! DamageEffect) continue;
-    found = true;
-
-    var value = effect.value.toDouble();
-    if (effect.scaleWith == 'karma') value += state.karma * effect.scale;
-
-    final base = value.floor();
-    final defender = (targetIndex != null && targetIndex < state.enemies.length)
-        ? state.enemies[targetIndex].statuses
-        : const <StatusId, int>{};
-
-    total += sim._attackDamage(base, state.statuses, defender);
-  }
-
-  return found ? total : null;
+  return sim.previewCardDamage(card, targetIndex);
 }
 
 /// 전투 상태가 없을 때 카드 정의만으로 알 수 있는 기본 피해량.
@@ -197,16 +184,8 @@ int? previewBlock(
   CardDef card, {
   CombatTuning tuning = CombatTuning.m0,
 }) {
-  var total = 0;
-  var found = false;
-
-  for (final effect in card.effects) {
-    if (effect is! BlockEffect) continue;
-    found = true;
-    total += effect.value + (state.statuses[StatusId.dexterity] ?? 0);
-  }
-
-  return found ? total : null;
+  final sim = _Sim(state, tuning);
+  return sim.previewCardBlock(card);
 }
 
 /// 전투 상태가 없을 때 카드 정의만으로 알 수 있는 기본 방어도.
@@ -241,7 +220,7 @@ int? previewEnemyDamage(
   if (move is! EnemyAttack) return null;
 
   final sim = _Sim(state, tuning);
-  return sim._attackDamage(move.damage, enemy.statuses, state.statuses);
+  return sim.incomingDamage(move.damage, enemy.statuses);
 }
 
 /// 엔진 내부의 가변 작업대.
@@ -265,6 +244,7 @@ class _Sim {
       enemies = List.of(s.enemies),
       statuses = Map.of(s.statuses),
       rng = s.rng,
+      relics = List.of(s.relics),
       outcome = s.outcome;
 
   final CombatTuning tuning;
@@ -283,7 +263,10 @@ class _Sim {
   List<Enemy> enemies;
   Map<StatusId, int> statuses;
   Rng rng;
+  List<RelicDef> relics;
   CombatOutcome? outcome;
+
+  KarmaBand get karmaBand => KarmaBand.of(karma);
 
   CombatResult finish() {
     return CombatResult(
@@ -301,6 +284,7 @@ class _Sim {
         enemies: List.unmodifiable(enemies),
         statuses: Map.unmodifiable(statuses),
         rng: rng,
+        relics: List.unmodifiable(relics),
         outcome: outcome,
       ),
       List.unmodifiable(events),
@@ -336,17 +320,7 @@ class _Sim {
     hand.removeAt(action.handIndex);
     energy -= card.cost;
     events.add(CardPlayed(card));
-
-    for (final effect in card.effects) {
-      _applyEffect(effect, target);
-    }
-
-    // 업은 효과가 해결된 **뒤에** 붙는다.
-    //
-    // 먼저 붙이면 「원한의 칼날」처럼 업에 비례하는 카드가 자기가 만든 업으로
-    // 자기 피해를 키운다. 그런 자기 참조는 §3.3의 "지금 밀어붙이고 나중에
-    // 값을 치른다"는 거래 구조를 흐린다. 업은 결과지 재료가 아니다.
-    if (card.karma != 0) _changeKarma(card.karma);
+    _resolveCardEffects(card, target);
 
     // 힘(power) 카드는 버림더미로 가지 않고 전투 내내 활성 영역에 남는다(§3.5).
     // 활성 영역은 재섞기 경로와 분리되어 있으므로, 덱 구성이 액션 로그 재생
@@ -364,6 +338,8 @@ class _Sim {
     events.add(TurnEnded(turn));
 
     _tickGrudge();
+    if (outcome != null) return;
+    trigger(RelicTrigger.turnEnded);
     if (outcome != null) return;
 
     // §3.1 — 남은 손패 버림.
@@ -465,6 +441,8 @@ class _Sim {
 
     energy = tuning.energyPerTurn;
 
+    trigger(RelicTrigger.turnStarted);
+
     _tickPlayerPoison();
     if (outcome != null) return;
 
@@ -515,6 +493,164 @@ class _Sim {
     }
   }
 
+  void _resolveCardEffects(CardDef card, int? target) {
+    for (final effect in card.effects) {
+      _applyEffect(effect, target);
+    }
+
+    // 업은 효과가 해결된 뒤에 붙는다. 업 비례 카드가 자기 비용으로 피해를
+    // 키우지 않게 하는 기존 전투 순서를 유물 훅도 그대로 따른다.
+    if (card.karma != 0) _changeKarma(card.karma);
+    trigger(RelicTrigger.cardPlayed, card: card, target: target);
+  }
+
+  /// 유물 선언을 실제 전투 규칙으로 바꾸는 유일한 곳.
+  void trigger(RelicTrigger trigger, {CardDef? card, int? target}) {
+    for (final relic in relics) {
+      if (relic.trigger != trigger) continue;
+
+      switch (relic.effect) {
+        case KarmaScaledStrengthEffect():
+          final stacks = karma ~/ tuning.karmaPerRelicStrength;
+          if (stacks > 0) _addStatusToPlayer(StatusId.strength, stacks);
+
+        case PureDexterityEffect():
+          if (karmaBand == KarmaBand.pure) {
+            _addStatusToPlayer(StatusId.dexterity, tuning.pureRelicDexterity);
+          }
+
+        case OpeningDrawEffect():
+          draw(tuning.openingRelicDrawCount);
+
+        case OpeningCleanseEffect():
+          _changeKarma(-tuning.openingRelicCleanse);
+
+        case KarmaBandBlockEffect():
+          final gained = switch (karmaBand) {
+            KarmaBand.pure => tuning.pureRelicTurnBlock,
+            KarmaBand.ordinary => tuning.ordinaryRelicTurnBlock,
+            KarmaBand.turbid => tuning.turbidRelicTurnBlock,
+            KarmaBand.wicked => 0,
+          };
+          if (gained > 0) {
+            block += gained;
+            events.add(
+              BlockGained(targetIndex: CombatState.playerIndex, amount: gained),
+            );
+          }
+
+        case TurbidEnergyEffect():
+          if (_isTurbidOrWicked) {
+            energy += tuning.turbidRelicEnergy;
+            events.add(EnergyGained(tuning.turbidRelicEnergy));
+          }
+
+        case KarmaCardBonusDamageEffect():
+          if (card != null && card.karma > 0 && target != null) {
+            _damageEnemy(target, tuning.karmaCardBonusDamage);
+          }
+
+        case CleanCardBlockEffect():
+          if (card != null && card.karma == 0) {
+            block += tuning.cleanCardBlock;
+            events.add(
+              BlockGained(
+                targetIndex: CombatState.playerIndex,
+                amount: tuning.cleanCardBlock,
+              ),
+            );
+          }
+
+        case UnblockedDamageVulnerableEffect():
+          if (target != null) {
+            _addStatusToEnemy(
+              target,
+              StatusId.vulnerable,
+              tuning.unblockedDamageVulnerable,
+            );
+          }
+
+        case UnblockedDamageKarmaEffect():
+          _changeKarma(tuning.unblockedDamageKarma);
+
+        case KarmaBurstEffect():
+          final damage = karma ~/ tuning.karmaPerRelicBurst;
+          if (damage > 0) {
+            for (var i = 0; i < enemies.length; i++) {
+              if (enemies[i].isAlive) _damageEnemy(i, damage);
+            }
+          }
+
+        case TurnEndCleanseEffect():
+          _changeKarma(-tuning.turnEndRelicCleanse);
+
+        case EnemyDeathHealEffect():
+          hp = (hp + tuning.enemyDeathRelicHeal).clamp(0, maxHp);
+
+        case EnemyDeathBlockEffect():
+          block += tuning.enemyDeathRelicBlock;
+          events.add(
+            BlockGained(
+              targetIndex: CombatState.playerIndex,
+              amount: tuning.enemyDeathRelicBlock,
+            ),
+          );
+
+        case TurbidDamageReductionEffect():
+        // [incomingDamage]에서 방어도 전에 공통으로 해석한다.
+      }
+    }
+  }
+
+  bool get _isTurbidOrWicked =>
+      karmaBand == KarmaBand.turbid || karmaBand == KarmaBand.wicked;
+
+  int? previewCardDamage(CardDef card, int? target) {
+    if (target != null &&
+        (target < 0 || target >= enemies.length || !enemies[target].isAlive)) {
+      return null;
+    }
+
+    // 대상을 고르기 전 카드 표시는 대상 상태를 모른다는 기존 계약을 지킨다.
+    // 다만 피해 계산 자체는 실제 카드 해석 경로를 그대로 지나게 한다.
+    final resolvedTarget = target ?? enemies.length;
+    if (target == null) {
+      enemies.add(
+        Enemy(
+          id: 'preview_target',
+          name: '미리보기 대상',
+          hp: 1000000000,
+          maxHp: 1000000000,
+          pattern: const [EnemyDefend(0)],
+        ),
+      );
+    }
+
+    final eventCount = events.length;
+    _resolveCardEffects(card, resolvedTarget);
+    final damage = events
+        .skip(eventCount)
+        .whereType<DamageDealt>()
+        .where((event) => event.targetIndex == resolvedTarget)
+        .fold(0, (total, event) => total + event.amount + event.blocked);
+    return damage == 0 && !card.effects.any((effect) => effect is DamageEffect)
+        ? null
+        : damage;
+  }
+
+  int? previewCardBlock(CardDef card) {
+    final before = block;
+    final eventCount = events.length;
+    _resolveCardEffects(card, null);
+    final gained = events
+        .skip(eventCount)
+        .whereType<BlockGained>()
+        .where((event) => event.targetIndex == CombatState.playerIndex)
+        .fold(0, (total, event) => total + event.amount);
+    if (gained == 0 && block == before) return null;
+    return block - before;
+  }
+
   // ── 피해 ──────────────────────────────────────────────
 
   /// 기세·약화·취약을 반영한 최종 피해량.
@@ -556,13 +692,17 @@ class _Sim {
       DamageDealt(targetIndex: index, amount: through, blocked: blocked),
     );
 
-    if (!enemies[index].isAlive) events.add(EnemyDied(index));
+    if (!enemies[index].isAlive) {
+      events.add(EnemyDied(index));
+      trigger(RelicTrigger.enemyDied);
+    }
+    if (through > 0) {
+      trigger(RelicTrigger.playerDamageDealt, target: index);
+    }
   }
 
   void _damagePlayer(int base, {Map<StatusId, int>? attacker}) {
-    final amount = attacker == null
-        ? base
-        : _attackDamage(base, attacker, statuses);
+    final amount = attacker == null ? base : incomingDamage(base, attacker);
 
     final blocked = amount < block ? amount : block;
     final through = amount - blocked;
@@ -580,6 +720,36 @@ class _Sim {
     );
 
     _checkOutcome();
+  }
+
+  /// 적의 공격 피해와 예고가 함께 쓰는, 방어도 전 최종 피해량.
+  int incomingDamage(int base, Map<StatusId, int> attacker) {
+    var amount = _attackDamage(base, attacker, statuses);
+    for (final relic in relics) {
+      if (relic.trigger != RelicTrigger.playerDamageTaken) continue;
+      switch (relic.effect) {
+        case TurbidDamageReductionEffect():
+          if (_isTurbidOrWicked) {
+            amount -= tuning.turbidRelicDamageReduction;
+          }
+        case KarmaScaledStrengthEffect() ||
+            PureDexterityEffect() ||
+            OpeningDrawEffect() ||
+            OpeningCleanseEffect() ||
+            KarmaBandBlockEffect() ||
+            TurbidEnergyEffect() ||
+            KarmaCardBonusDamageEffect() ||
+            CleanCardBlockEffect() ||
+            UnblockedDamageVulnerableEffect() ||
+            UnblockedDamageKarmaEffect() ||
+            KarmaBurstEffect() ||
+            TurnEndCleanseEffect() ||
+            EnemyDeathHealEffect() ||
+            EnemyDeathBlockEffect():
+          throw StateError('유물 발동 시점이 효과와 다르다');
+      }
+    }
+    return amount < 0 ? 0 : amount;
   }
 
   /// 방어도를 피해 가는 체력 대가. 정화의 비용은 공격 피해가 아니다.
