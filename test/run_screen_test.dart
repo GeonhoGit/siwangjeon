@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:siwangjeon/app/app.dart';
 import 'package:siwangjeon/app/run_controller.dart';
+import 'package:siwangjeon/data/m0_content.dart'
+    show cleanCut, greatPurification, ironGuard, steadyBreath;
 import 'package:siwangjeon/data/m1_events.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
@@ -97,6 +99,24 @@ const _rewardC = CardDef(
 );
 
 const _rewardCards = [_rewardA, _rewardB, _rewardC];
+const _nonCombatCardPool = [
+  _rewardA,
+  _rewardB,
+  _rewardC,
+  ironGuard,
+  cleanCut,
+  steadyBreath,
+  greatPurification,
+];
+
+const _eventIronGuard = CardDef(
+  id: 'card_iron_guard',
+  name: '사건 철갑 수비',
+  type: CardType.skill,
+  cost: 1,
+  targeted: false,
+  effects: [BlockEffect(4)],
+);
 
 class _StaticRunController extends RunController {
   _StaticRunController(this._session);
@@ -665,6 +685,8 @@ void main() {
       );
       expect(find.byKey(const ValueKey('event-choice-seal')), findsOneWidget);
       expect(find.byKey(const ValueKey('event-choice-confess')), findsNothing);
+      expect(find.text('업 +3 · 노잣돈 +35'), findsOneWidget);
+      expect(find.text('변화 없음'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('event-choice-seal')));
       await tester.pump();
@@ -696,12 +718,39 @@ void main() {
     }
   });
 
-  testWidgets('세 갈래 사건과 긴 상점 덱은 경계 기기와 글자 배율에서 넘치지 않는다', (tester) async {
+  testWidgets('사건의 카드 획득 선택지는 카드 이름과 효과를 함께 보인다', (tester) async {
+    final seed = _seedForFirstNode(RunNodeType.event);
+    final offering = m1Events.singleWhere(
+      (event) => event.id == 'event_hungry_ghost_offering',
+    );
+
+    await _pumpRun(
+      tester,
+      seed: seed,
+      content: _nonCombatContent(
+        events: [offering],
+        cardRewardPool: const [_rewardA, _rewardB, _rewardC, _eventIronGuard],
+      ),
+      initialState: _enteredFirstNode(seed),
+    );
+
+    try {
+      expect(find.text('카드 획득 사건 철갑 수비'), findsOneWidget);
+      expect(find.text('방어 4'), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('세 갈래·카드 획득 사건과 긴 상점 덱은 경계 기기와 글자 배율에서 넘치지 않는다', (tester) async {
     final shopSeed = _seedForFirstNode(RunNodeType.shop);
     final wildSeed = _seedForFirstNode(RunNodeType.wildCamp);
     final eventSeed = _seedForFirstNode(RunNodeType.event);
     final cup = m1Events.singleWhere(
       (event) => event.id == 'event_cup_of_oblivion',
+    );
+    final offering = m1Events.singleWhere(
+      (event) => event.id == 'event_hungry_ghost_offering',
     );
 
     for (final device in _boundaryDevices) {
@@ -790,6 +839,24 @@ void main() {
           );
           expect(visibleChoices, findsNWidgets(3));
           _expectMinimumTapTargets(tester, visibleChoices);
+          expect(tester.takeException(), isNull, reason: device.name);
+        } finally {
+          await _disposeTree(tester);
+        }
+
+        await _pumpRun(
+          tester,
+          seed: eventSeed,
+          device: device,
+          textScale: textScale,
+          content: _nonCombatContent(events: [offering]),
+          initialState: _enteredFirstNode(eventSeed),
+        );
+        try {
+          _expectMinimumTapTargets(
+            tester,
+            find.byKey(const ValueKey('event-choice-share')),
+          );
           expect(tester.takeException(), isNull, reason: device.name);
         } finally {
           await _disposeTree(tester);
@@ -955,6 +1022,7 @@ RunContent _nonCombatContent({
   int startingKarma = 0,
   List<CardDef>? deck,
   List<RunEventDef>? events,
+  List<CardDef>? cardRewardPool,
 }) => RunContent(
   maxHp: 80,
   deck: deck ?? const [_rewardA, _rewardA],
@@ -969,8 +1037,8 @@ RunContent _nonCombatContent({
   ],
   startingMoney: startingMoney,
   startingKarma: startingKarma,
-  cardRewardPool: _rewardCards,
-  shopCardPool: _rewardCards,
+  cardRewardPool: cardRewardPool ?? _nonCombatCardPool,
+  shopCardPool: cardRewardPool ?? _rewardCards,
   events: events ?? m1Events,
 );
 
