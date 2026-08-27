@@ -114,6 +114,16 @@ const _wildCampTuning = RunTuning(
   wildCampRepentMoneyCost: 25,
 );
 
+const _enhanceThenShopTuning = RunTuning(
+  nodeTypeWeights: [
+    RunNodeWeight(RunNodeType.wildCamp, 1),
+    RunNodeWeight(RunNodeType.shop, 1),
+  ],
+  shopCardChoiceCount: 3,
+  shopCardPrice: 20,
+  shopRemoveCardPrice: 30,
+);
+
 const _eventThenWildCampTuning = RunTuning(
   nodeTypeWeights: [
     RunNodeWeight(RunNodeType.event, 1),
@@ -406,6 +416,188 @@ void main() {
       expect(afterRepent.hp, repentContent.maxHp);
       expect(afterRepent.karma, 2);
       expect(afterRepent.money, 75);
+    });
+
+    test('강화는 한 인스턴스만 바꾸고 같은 로그에서 결정론적으로 재생한다', () {
+      final content = _content();
+      final entered = _enterFirstNode(
+        seed: 306,
+        content: content,
+        tuning: _wildCampTuning,
+      );
+      final chooseEnhance =
+          legalRunActions(entered, tuning: _wildCampTuning, content: content)
+              .whereType<ChooseWildCampOption>()
+              .singleWhere((action) => action.choice == WildCampChoice.enhance);
+      final choosing = applyRunAction(
+        entered,
+        chooseEnhance,
+        tuning: _wildCampTuning,
+        content: content,
+      );
+      final secondStrikeId = 'start:1:${_duplicateStrike.id}';
+      final enhanceSecondStrike =
+          legalRunActions(choosing, tuning: _wildCampTuning, content: content)
+              .whereType<EnhanceWildCampCard>()
+              .singleWhere((action) => action.cardInstanceId == secondStrikeId);
+      final enhanced = applyRunAction(
+        choosing,
+        enhanceSecondStrike,
+        tuning: _wildCampTuning,
+        content: content,
+      );
+      final firstReplay = replayRun(
+        enhanced,
+        tuning: _wildCampTuning,
+        content: content,
+      );
+      final secondReplay = replayRun(
+        enhanced,
+        tuning: _wildCampTuning,
+        content: content,
+      );
+
+      final firstStrike = firstReplay.deckCards[0];
+      final secondStrike = firstReplay.deckCards[1];
+      expect(firstStrike.isEnhanced, isFalse);
+      expect(firstStrike.card.name, _duplicateStrike.name);
+      expect(secondStrike.isEnhanced, isTrue);
+      expect(secondStrike.card.name, '${_duplicateStrike.name}+');
+      expect(
+        secondReplay.deckCards
+            .map(
+              (card) =>
+                  '${card.instanceId}:${card.card.name}:${card.isEnhanced}',
+            )
+            .toList(),
+        firstReplay.deckCards
+            .map(
+              (card) =>
+                  '${card.instanceId}:${card.card.name}:${card.isEnhanced}',
+            )
+            .toList(),
+      );
+      expect(enhanced.actionLog.last, isA<EnhanceWildCampCard>());
+      expect(
+        () => applyRunAction(
+          enhanced,
+          enhanceSecondStrike,
+          tuning: _wildCampTuning,
+          content: content,
+        ),
+        throwsA(isA<IllegalRunActionError>()),
+      );
+    });
+
+    test('강화한 중복 카드만 상점에서 정확히 제거한다', () {
+      final content = _content(startingMoney: 100);
+      final route = _wildCampThenShopRoute();
+      var state = startRun(seed: route.seed, characterId: 'm0');
+
+      for (
+        var routeIndex = 0;
+        routeIndex < route.nodeIds.length;
+        routeIndex++
+      ) {
+        final nodeId = route.nodeIds[routeIndex];
+        state = applyRunAction(
+          state,
+          MoveToNode(nodeId: nodeId),
+          tuning: _enhanceThenShopTuning,
+          content: content,
+        );
+        final progress = replayRun(
+          state,
+          tuning: _enhanceThenShopTuning,
+          content: content,
+        );
+        if (progress.pendingWildCamp != null) {
+          if (!progress.deckCards.any((card) => card.isEnhanced)) {
+            state = applyRunAction(
+              state,
+              legalRunActions(
+                state,
+                tuning: _enhanceThenShopTuning,
+                content: content,
+              ).whereType<ChooseWildCampOption>().singleWhere(
+                (action) => action.choice == WildCampChoice.enhance,
+              ),
+              tuning: _enhanceThenShopTuning,
+              content: content,
+            );
+            state = applyRunAction(
+              state,
+              legalRunActions(
+                state,
+                tuning: _enhanceThenShopTuning,
+                content: content,
+              ).whereType<EnhanceWildCampCard>().singleWhere(
+                (action) =>
+                    action.cardInstanceId == 'start:1:${_duplicateStrike.id}',
+              ),
+              tuning: _enhanceThenShopTuning,
+              content: content,
+            );
+          } else {
+            state = applyRunAction(
+              state,
+              legalRunActions(
+                state,
+                tuning: _enhanceThenShopTuning,
+                content: content,
+              ).whereType<ChooseWildCampOption>().singleWhere(
+                (action) => action.choice == WildCampChoice.rest,
+              ),
+              tuning: _enhanceThenShopTuning,
+              content: content,
+            );
+          }
+        }
+        if (progress.pendingShop != null &&
+            routeIndex < route.nodeIds.length - 1) {
+          state = applyRunAction(
+            state,
+            legalRunActions(
+              state,
+              tuning: _enhanceThenShopTuning,
+              content: content,
+            ).whereType<LeaveShop>().single,
+            tuning: _enhanceThenShopTuning,
+            content: content,
+          );
+        }
+      }
+
+      final removal =
+          legalRunActions(
+            state,
+            tuning: _enhanceThenShopTuning,
+            content: content,
+          ).whereType<RemoveShopCard>().singleWhere(
+            (action) =>
+                action.cardInstanceId == 'start:1:${_duplicateStrike.id}',
+          );
+      final removed = applyRunAction(
+        state,
+        removal,
+        tuning: _enhanceThenShopTuning,
+        content: content,
+      );
+      final afterRemove = replayRun(
+        removed,
+        tuning: _enhanceThenShopTuning,
+        content: content,
+      );
+
+      expect(
+        afterRemove.deckCards.map((card) => card.instanceId),
+        isNot(contains(removal.cardInstanceId)),
+      );
+      final retained = afterRemove.deckCards.singleWhere(
+        (card) => card.instanceId == 'start:0:${_duplicateStrike.id}',
+      );
+      expect(retained.isEnhanced, isFalse);
+      expect(retained.card.name, _duplicateStrike.name);
     });
   });
 
@@ -831,4 +1023,34 @@ RunState _completeShop({required int seed, required RunContent content}) {
     }
   }
   throw StateError('체력 대가 사건 뒤 야장 경로를 찾지 못했다');
+}
+
+({int seed, List<int> nodeIds}) _wildCampThenShopRoute() {
+  for (var seed = 0; seed < 10000; seed++) {
+    final map = generateActOneMap(seed, tuning: _enhanceThenShopTuning);
+    final route = _findRouteWithTypes(map, const [
+      RunNodeType.wildCamp,
+      RunNodeType.shop,
+    ]);
+    if (route != null) return (seed: seed, nodeIds: route);
+  }
+  throw StateError('강화 뒤 상점으로 가는 경로를 찾지 못했다');
+}
+
+List<int>? _findRouteWithTypes(RunMap map, List<RunNodeType> types) {
+  List<int>? visit(int nodeId, int matched, List<int> path) {
+    final node = map.nodeById(nodeId);
+    final nextMatched = matched < types.length && node.type == types[matched]
+        ? matched + 1
+        : matched;
+    final nextPath = [...path, nodeId];
+    if (nextMatched == types.length) return nextPath;
+    for (final nextNodeId in node.nextNodeIds) {
+      final route = visit(nextNodeId, nextMatched, nextPath);
+      if (route != null) return route;
+    }
+    return null;
+  }
+
+  return visit(map.nodes.first.id, 0, const []);
 }

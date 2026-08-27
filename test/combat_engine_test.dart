@@ -366,6 +366,59 @@ void main() {
       expect(cost.blocked, 0);
     });
 
+    test('새 정화 카드는 업을 낮추고 약화·취약·방어도 대가를 각각 부과한다', () {
+      final fasting = start(deck: deckOf(strike, 10), karma: 30).copyWith(
+        hand: const [fastingVow],
+        drawPile: const [],
+        discardPile: const [],
+      );
+      final fastingResult = applyAction(fasting, const PlayCard(handIndex: 0));
+      expect(
+        fastingResult.state.karma,
+        30 - PurificationCardTuning.fastingCleanse,
+      );
+      expect(
+        fastingResult.state.statuses[StatusId.weak],
+        PurificationCardTuning.fastingWeak,
+      );
+
+      final veil = start(deck: deckOf(strike, 10), karma: 30).copyWith(
+        hand: const [thinVeil],
+        drawPile: const [],
+        discardPile: const [],
+      );
+      final veilResult = applyAction(veil, const PlayCard(handIndex: 0));
+      expect(veilResult.state.karma, 30 - PurificationCardTuning.veilCleanse);
+      expect(
+        veilResult.state.statuses[StatusId.vulnerable],
+        PurificationCardTuning.veilVulnerable,
+      );
+
+      final noBlock = start(deck: deckOf(strike, 10), karma: 30).copyWith(
+        hand: const [shatteredWard],
+        drawPile: const [],
+        discardPile: const [],
+      );
+      expect(
+        legalActions(noBlock),
+        isNot(contains(const PlayCard(handIndex: 0))),
+      );
+
+      final guarded = noBlock.copyWith(
+        block: PurificationCardTuning.shatteredWardBlockCost,
+      );
+      final wardResult = applyAction(guarded, const PlayCard(handIndex: 0));
+      expect(
+        wardResult.state.karma,
+        30 - PurificationCardTuning.shatteredWardCleanse,
+      );
+      expect(wardResult.state.block, 0);
+      expect(
+        wardResult.events.whereType<BlockSpent>().single.amount,
+        PurificationCardTuning.shatteredWardBlockCost,
+      );
+    });
+
     test('효과로 늘린 업도 상한을 넘지 않는다', () {
       final initial = start(deck: deckOf(strike, 10), karma: 95).copyWith(
         hand: const [karmaOffering],

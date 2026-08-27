@@ -6,13 +6,13 @@ import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 
 void main() {
-  group('M0 카드 콘텐츠', () {
-    test('20장은 중복 id 없이 분류별 장수를 만족한다', () {
+  group('M1 카드 콘텐츠', () {
+    test('23장은 중복 id 없이 분류별 장수를 만족한다', () {
       final ids = m0Cards.map((card) => card.id).toSet();
       final purifications = m0Cards.where(_isPurification).toList();
 
-      expect(m0Cards, hasLength(20));
-      expect(ids, hasLength(20));
+      expect(m0Cards, hasLength(23));
+      expect(ids, hasLength(23));
       expect(
         m0Cards.where((card) => card.type == CardType.attack),
         hasLength(8),
@@ -21,7 +21,7 @@ void main() {
         m0Cards.where((card) => card.type == CardType.power),
         hasLength(3),
       );
-      expect(purifications, hasLength(2));
+      expect(purifications, hasLength(5));
       expect(
         m0Cards.where(
           (card) => card.type == CardType.skill && !_isPurification(card),
@@ -47,15 +47,28 @@ void main() {
       expect(statuses, everyElement(isIn(supported)));
     });
 
-    test('업 부과 7장과 대가 있는 정화 2장을 함께 둔다', () {
+    test('업 부과 7장과 서로 다른 대가의 정화 5장을 함께 둔다', () {
       final purifications = m0Cards.where(_isPurification).toList();
 
       expect(m0Cards.where((card) => card.karma > 0), hasLength(7));
       for (final card in purifications) {
         final hasHpCost = card.effects.whereType<LoseHpEffect>().isNotEmpty;
         final spendsWholeTurn = card.cost >= CombatTuning.m0.energyPerTurn;
+        final losesTempo = card.effects.whereType<ApplyStatusEffect>().any(
+          (effect) =>
+              effect.target == EffectTarget.self &&
+              (effect.status == StatusId.weak ||
+                  effect.status == StatusId.vulnerable),
+        );
+        final spendsBlock = card.effects
+            .whereType<SpendBlockEffect>()
+            .isNotEmpty;
 
-        expect(hasHpCost || spendsWholeTurn, isTrue, reason: card.id);
+        expect(
+          hasHpCost || spendsWholeTurn || losesTempo || spendsBlock,
+          isTrue,
+          reason: card.id,
+        );
       }
     });
 
@@ -70,6 +83,25 @@ void main() {
       expect(
         starterIds.union(rewardIds),
         m0Cards.map((card) => card.id).toSet(),
+      );
+    });
+
+    test('새 정화 3종은 보상·상점 풀에서 서로 다른 대가를 낸다', () {
+      for (final card in [fastingVow, thinVeil, shatteredWard]) {
+        expect(cardRewardPool, contains(card), reason: card.id);
+      }
+
+      expect(
+        fastingVow.effects.whereType<ApplyStatusEffect>().single.status,
+        StatusId.weak,
+      );
+      expect(
+        thinVeil.effects.whereType<ApplyStatusEffect>().single.status,
+        StatusId.vulnerable,
+      );
+      expect(
+        shatteredWard.effects.whereType<SpendBlockEffect>().single.amount,
+        greaterThan(0),
       );
     });
   });
