@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -73,10 +74,17 @@ void main() {
         ],
       );
 
-      final restored = const RunSaveCodec().decode(
-        const RunSaveCodec().encode(state),
-      );
+      const codec = RunSaveCodec();
+      final encoded = codec.encode(state);
+      final encodedJson = jsonDecode(encoded) as Map<String, Object?>;
+      final restored = codec.decode(encoded);
 
+      expect(encodedJson.keys.toSet(), {
+        'version',
+        'seed',
+        'characterId',
+        'actionLog',
+      });
       expect(restored.seed, state.seed);
       expect(restored.characterId, state.characterId);
       expect(restored.actionLog, hasLength(9));

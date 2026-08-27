@@ -821,9 +821,8 @@ List<Enemy> encounterForNode({
 
 /// 현재 노드의 카드 보상 후보를 `RngStream.reward`에서 뽑는다.
 ///
-/// 정예는 유물이 없는 M1-3 동안 같은 카드 보상을 임시로 사용한다. 유물 콘텐츠가
-/// 들어오면 이 함수가 정예의 유물 후보를 함께 만들 위치이며, 선택 기록은 여전히
-/// 액션 로그만으로 복원되어야 한다.
+/// 정예는 카드 대신 유물과 업보를 받으므로 이 함수를 사용하지 않는다.
+/// 보스의 최상급 유물 보상은 보스 콘텐츠가 생길 때까지 의도적으로 미룬다.
 CardReward cardRewardForNode({
   required int runSeed,
   required RunNode node,
@@ -942,7 +941,10 @@ RunEventDef eventForNode({
   return content.events[index];
 }
 
-/// 전투 승리 때 즉시 얻는 노잣돈. 정예는 유물 보상 전까지 더 많은 화폐를 준다.
+/// 전투 승리 때 즉시 얻는 노잣돈.
+///
+/// 정예는 유물과 업보를 받는 대신 노잣돈을 받지 않는다. 보스의 최상급
+/// 유물 보상은 후속 콘텐츠에서 붙이므로 현재는 기본 노잣돈을 준다.
 int moneyRewardForNode(RunNode node, {RunTuning tuning = RunTuning.m1}) {
   if (!node.hostsCombat) {
     throw ArgumentError.value(node, 'node', '전투가 아닌 노드에는 노잣돈 보상이 없다');
