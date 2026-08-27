@@ -109,28 +109,6 @@ class CombatTuning {
   static const CombatTuning m0 = CombatTuning();
 }
 
-/// 야장 카드 강화의 효과량. §3.5는 강화 횟수만 정하고 폭은 정하지 않았으므로,
-/// 아래 값은 모두 **M2의 10만 런 시뮬레이터 조율 전 임시값**이다. 카드 정의나
-/// 강화 인터프리터에 흩어 놓지 않아, 시뮬레이터가 이 묶음만 바꿔 비교할 수 있다.
-class CardEnhancementTuning {
-  const CardEnhancementTuning({
-    this.damageBonus = 3,
-    this.blockBonus = 3,
-    this.statusBonus = 1,
-    this.cleanseBonus = 3,
-  }) : assert(damageBonus > 0),
-       assert(blockBonus > 0),
-       assert(statusBonus > 0),
-       assert(cleanseBonus > 0);
-
-  final int damageBonus;
-  final int blockBonus;
-  final int statusBonus;
-  final int cleanseBonus;
-
-  static const CardEnhancementTuning m1 = CardEnhancementTuning();
-}
-
 /// M1 정화 카드의 정화량과 대가. §3.3은 정화에 대가만 요구할 뿐 수치를 정하지
 /// 않았으므로, 모두 **M2의 10만 런 시뮬레이터 조율 전 임시값**이다. 콘텐츠에는
 /// 카드가 업 축에서 하는 일만 남기고, 이 수치는 여기 한 곳에서 바꾼다.

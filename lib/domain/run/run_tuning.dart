@@ -182,9 +182,8 @@ class RunTuning {
   /// 야장의 휴식 회복량과 참회가 씻는 업·노잣돈 대가.
   ///
   /// §2.1의 휴식·강화와 §3.3의 참회를 모두 보존해 야장은 3택이다. 이 값들은
-  /// 강화 폭과 마찬가지로 **M2의 10만 런 시뮬레이터 조율 전 임시값**이며, 야장
-  /// 효과량을 엔진·UI에 흩어 놓지 않는다. 강화 폭은 전투 카드 수치이므로
-  /// `combat/tuning.dart`의 [CardEnhancementTuning]에 따로 모은다.
+  /// 카드 강화 폭과 마찬가지로 **M2의 10만 런 시뮬레이터 조율 전 임시값**이며, 야장
+  /// 효과량을 엔진·UI에 흩어 놓지 않는다. 강화 폭은 카드별 `upgrade` JSON에 둔다.
   final int wildCampRestHeal;
   final int wildCampRepentKarmaCleanse;
   final int wildCampRepentMoneyCost;

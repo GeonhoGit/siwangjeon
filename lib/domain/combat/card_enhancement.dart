@@ -5,16 +5,15 @@
 /// 않고, 저장 로그는 인스턴스 id 하나만 기록하면 된다.
 library;
 
-import '../effect/card_effect.dart';
 import '../model/card.dart';
-import 'tuning.dart';
 
 /// [card]의 강화본을 만든다. 호출자는 한 번 강화된 인스턴스를 다시 이 함수에
 /// 넘기지 않아야 하며, 그 합법성은 런 엔진의 `EnhanceWildCampCard` 후보가 맡는다.
-CardDef enhancedCard(
-  CardDef card, {
-  CardEnhancementTuning tuning = CardEnhancementTuning.m1,
-}) => CardDef(
+///
+/// 정화 카드의 JSON 강화본은 체력·기력·상태·방어도 대가를 원본과 같게 두고,
+/// 정화량만 늘린다. 대가까지 줄이면 §3.3의 "정화에는 반드시 대가" 거래가 강화
+/// 한 번으로 사라진다.
+CardDef enhancedCard(CardDef card) => CardDef(
   id: card.id,
   name: '${card.name}+',
   type: card.type,
@@ -22,32 +21,7 @@ CardDef enhancedCard(
   cost: card.cost,
   karma: card.karma,
   targeted: card.targeted,
-  effects: [for (final effect in card.effects) _enhancedEffect(effect, tuning)],
+  // 강화 정의가 없는 테스트 전용 카드는 원본 효과를 유지한다. 앱 콘텐츠의 모든
+  // 카드는 loader 회귀 테스트가 JSON `upgrade` 존재를 강제한다.
+  effects: card.upgrade?.effects ?? card.effects,
 );
-
-CardEffect _enhancedEffect(CardEffect effect, CardEnhancementTuning tuning) =>
-    switch (effect) {
-      DamageEffect(:final value, :final scaleWith, :final scale) =>
-        DamageEffect(
-          value: value + tuning.damageBonus,
-          scaleWith: scaleWith,
-          scale: scale,
-        ),
-      BlockEffect(:final value) => BlockEffect(value + tuning.blockBonus),
-      SpendBlockEffect() => effect,
-      ApplyStatusEffect(:final status, :final stacks, :final target) =>
-        ApplyStatusEffect(
-          status: status,
-          stacks: stacks + tuning.statusBonus,
-          target: target,
-        ),
-      // 정화 카드의 강화는 업을 더 씻되 체력·기력 대가는 그대로 둔다. 대가까지
-      // 줄이면 §3.3의 "정화에는 반드시 대가"라는 거래가 강화 한 번으로 사라진다.
-      ChangeKarmaEffect(:final amount) when amount < 0 => ChangeKarmaEffect(
-        amount - tuning.cleanseBonus,
-      ),
-      ChangeKarmaEffect() ||
-      DrawCardsEffect() ||
-      GainEnergyEffect() ||
-      LoseHpEffect() => effect,
-    };

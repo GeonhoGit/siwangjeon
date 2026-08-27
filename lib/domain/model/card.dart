@@ -36,6 +36,7 @@ class CardDef {
     this.rarity = CardRarity.common,
     this.karma = 0,
     this.targeted = true,
+    this.upgrade,
   }) : assert(karma >= 0, '고정 업 비용은 음수가 될 수 없다. 정화에는 ChangeKarmaEffect를 쓴다.');
 
   final String id;
@@ -57,6 +58,20 @@ class CardDef {
 
   final List<CardEffect> effects;
 
+  /// 야장에서 이 카드 인스턴스에 적용할 카드별 강화본이다(기획서 §3.5, §7.3).
+  ///
+  /// M1 콘텐츠의 강화 수치는 모두 **M2의 10만 런 시뮬레이터 조율 전 임시값**이다.
+  /// §9.1에 따라 강화 폭은 엔진의 일괄 규칙이 아니라 JSON 콘텐츠에서 카드별로
+  /// 조정한다. 테스트 전용 [CardDef]는 강화가 없을 수 있다.
+  final CardUpgrade? upgrade;
+
   @override
   String toString() => 'CardDef($id)';
+}
+
+/// JSON `upgrade` 항목을 해석한 카드별 강화 효과다.
+class CardUpgrade {
+  const CardUpgrade({required this.effects});
+
+  final List<CardEffect> effects;
 }
