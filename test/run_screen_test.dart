@@ -12,6 +12,7 @@ import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/combat_action.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
+import 'package:siwangjeon/domain/model/relic.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 import 'package:siwangjeon/domain/run/run_action.dart';
 import 'package:siwangjeon/domain/run/run_content.dart';
@@ -22,6 +23,7 @@ import 'package:siwangjeon/domain/run/run_node_type.dart';
 import 'package:siwangjeon/domain/run/run_state.dart';
 import 'package:siwangjeon/domain/run/run_tuning.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
+import 'package:siwangjeon/ui/relic_inventory.dart';
 import 'package:siwangjeon/ui/run_screen.dart';
 
 class _TestDevice {
@@ -469,6 +471,53 @@ void main() {
       expect(find.text(chosen.name), findsOneWidget);
       expect(find.text('발동: ${preview.triggerLabel}'), findsOneWidget);
       expect(find.text(preview.effectLabel), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('승리 화면은 보유 유물이 아닌 victoryRelics를 RelicSummary에 주입한다', (
+    tester,
+  ) async {
+    final granted = m1Relics.first;
+    final previouslyOwned = m1Relics[1];
+    await _pumpStaticRun(
+      tester,
+      device: _galaxyS25Ultra,
+      textScale: 1.3,
+      session: _victorySession(
+        relics: [previouslyOwned],
+        victoryRelics: [granted],
+      ),
+    );
+
+    try {
+      expect(find.byKey(const ValueKey('victory-relics')), findsOneWidget);
+      expect(
+        find.byKey(ValueKey('victory-relic-${granted.id}')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey('victory-relic-${previouslyOwned.id}')),
+        findsNothing,
+      );
+      expect(find.byType(RelicSummary), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _disposeTree(tester);
+    }
+
+    await _pumpStaticRun(
+      tester,
+      device: _galaxyS25Ultra,
+      textScale: 1.3,
+      session: _victorySession(),
+    );
+
+    try {
+      expect(find.byKey(const ValueKey('victory-relics')), findsNothing);
+      expect(find.byType(RelicSummary), findsNothing);
+      expect(tester.takeException(), isNull);
     } finally {
       await _disposeTree(tester);
     }
@@ -1181,6 +1230,30 @@ RunSession _relicInventorySession() => RunSession(
     money: 0,
     deck: const [],
     relics: m1Relics.take(14).toList(),
+  ),
+  legalActions: const [],
+);
+
+RunSession _victorySession({
+  List<RelicDef> relics = const [],
+  List<RelicDef> victoryRelics = const [],
+}) => RunSession(
+  state: const RunState(seed: 1, characterId: 'm0', actionLog: []),
+  progress: RunProgress(
+    map: RunMap(
+      nodes: [
+        RunNode(id: 0, depth: 0, type: RunNodeType.boss, nextNodeIds: const []),
+      ],
+    ),
+    visitedNodeIds: const [],
+    hp: 80,
+    maxHp: 80,
+    karma: 80,
+    money: 0,
+    deck: const [],
+    relics: relics,
+    victoryRelics: victoryRelics,
+    outcome: RunOutcome.victory,
   ),
   legalActions: const [],
 );

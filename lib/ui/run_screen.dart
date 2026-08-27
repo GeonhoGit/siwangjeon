@@ -11,6 +11,7 @@ import '../app/combat_controller.dart';
 import '../app/run_controller.dart';
 import '../domain/combat/combat_engine.dart';
 import '../domain/model/card.dart';
+import '../domain/model/relic.dart';
 import '../domain/run/run_action.dart';
 import '../domain/run/run_engine.dart';
 import '../domain/run/run_event.dart';
@@ -41,6 +42,7 @@ class RunScreen extends ConsumerWidget {
     if (progress.isOver) {
       return _RunEndedScreen(
         outcome: progress.outcome!,
+        victoryRelics: progress.victoryRelics,
         onRestart: controller.restart,
       );
     }
@@ -1019,9 +1021,14 @@ List<String> _cardEffectLines(CardDef card) {
 }
 
 class _RunEndedScreen extends StatelessWidget {
-  const _RunEndedScreen({required this.outcome, required this.onRestart});
+  const _RunEndedScreen({
+    required this.outcome,
+    required this.victoryRelics,
+    required this.onRestart,
+  });
 
   final RunOutcome outcome;
+  final List<RelicDef> victoryRelics;
   final VoidCallback onRestart;
 
   @override
@@ -1046,6 +1053,40 @@ class _RunEndedScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 Text(runOutcomeMessage(outcome), textAlign: TextAlign.center),
+                if (outcome == RunOutcome.victory &&
+                    victoryRelics.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    key: const ValueKey('victory-relics'),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF332B31),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '심판의 유물',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        for (
+                          var index = 0;
+                          index < victoryRelics.length;
+                          index++
+                        ) ...[
+                          const SizedBox(height: 12),
+                          RelicSummary(
+                            key: ValueKey(
+                              'victory-relic-${victoryRelics[index].id}',
+                            ),
+                            relic: victoryRelics[index],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: onRestart,
