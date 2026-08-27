@@ -857,8 +857,8 @@ List<Enemy> encounterForNode({
   required int runSeed,
   required RunNode node,
   required RunContent content,
+  required int karma,
   RunTuning tuning = RunTuning.m1,
-  int karma = 0,
 }) {
   if (!node.hostsCombat) {
     throw ArgumentError.value(node, 'node', '전투가 아닌 노드에는 적 구성이 없다');

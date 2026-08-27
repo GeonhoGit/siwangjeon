@@ -98,6 +98,7 @@ void main() {
         node: node,
         content: content,
         tuning: _rewardTuning,
+        karma: beforeVictory.karma,
       );
       final won = _winCurrentCombat(entered, content: content);
       final reward = replayRun(
