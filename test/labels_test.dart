@@ -1,8 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:siwangjeon/data/m0_content.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 import 'package:siwangjeon/ui/labels.dart';
+
+import 'support/m1_card_test_content.dart';
 
 void main() {
   group('적 예고 표기', () {
@@ -21,7 +22,7 @@ void main() {
   });
 
   test('겹친 손패에 남는 이름 앞 두 글자는 M1의 23종을 모두 구분한다', () {
-    final labels = m0Cards.map(handCardLabel).toList();
+    final labels = m1Cards.map(handCardLabel).toList();
 
     expect(labels, hasLength(23));
     expect(labels.toSet(), hasLength(23));

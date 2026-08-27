@@ -6,10 +6,15 @@ import 'package:siwangjeon/domain/run/run_action.dart';
 import 'package:siwangjeon/domain/run/run_engine.dart';
 import 'package:siwangjeon/domain/run/run_state.dart';
 
+import 'support/m1_card_test_content.dart';
+
 void main() {
   test('런 컨트롤러는 domain이 준 이동 액션을 그대로 재생한다', () {
     final container = ProviderContainer(
-      overrides: [runSeedFactoryProvider.overrideWithValue(() => 20260827)],
+      overrides: [
+        runContentProvider.overrideWithValue(m1TestContent),
+        runSeedFactoryProvider.overrideWithValue(() => 20260827),
+      ],
     );
     addTearDown(container.dispose);
 
@@ -37,6 +42,7 @@ void main() {
     final storage = _SavingMemoryStorage();
     final container = ProviderContainer(
       overrides: [
+        runContentProvider.overrideWithValue(m1TestContent),
         runSeedFactoryProvider.overrideWithValue(() => 20260828),
         runStorageProvider.overrideWithValue(storage),
       ],
@@ -58,7 +64,10 @@ void main() {
   test('시작 전에 주입된 저장 런으로 새 시드 대신 이어서 시작한다', () {
     const restored = RunState(seed: 20260829, characterId: 'm0', actionLog: []);
     final container = ProviderContainer(
-      overrides: [runInitialStateProvider.overrideWithValue(restored)],
+      overrides: [
+        runContentProvider.overrideWithValue(m1TestContent),
+        runInitialStateProvider.overrideWithValue(restored),
+      ],
     );
     addTearDown(container.dispose);
 

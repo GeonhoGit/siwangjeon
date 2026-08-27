@@ -6,6 +6,8 @@ import 'package:siwangjeon/domain/model/combat_state.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 
+import 'support/m1_card_test_content.dart';
+
 void main() {
   group('M0 적 콘텐츠', () {
     test('다섯 종은 중복 id 없이 구현된 상태만 예고한다', () {

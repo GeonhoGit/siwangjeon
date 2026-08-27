@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:siwangjeon/data/m0_content.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/combat_action.dart';
@@ -12,6 +11,8 @@ import 'package:siwangjeon/domain/run/run_map.dart';
 import 'package:siwangjeon/domain/run/run_node_type.dart';
 import 'package:siwangjeon/domain/run/run_state.dart';
 import 'package:siwangjeon/domain/run/run_tuning.dart';
+
+import 'support/m1_card_test_content.dart';
 
 const _combatOnlyTuning = RunTuning(
   nodeTypeWeights: [RunNodeWeight(RunNodeType.combat, 1)],
@@ -257,7 +258,7 @@ void main() {
     });
 
     test('적 구성은 encounter 스트림에서 결정론적으로 M0 적 풀을 뽑는다', () {
-      final content = m0RunContent();
+      final content = m1TestContent;
       final map = generateActOneMap(76, tuning: _combatOnlyTuning);
       final node = map.nodes.first;
       final a = encounterForNode(

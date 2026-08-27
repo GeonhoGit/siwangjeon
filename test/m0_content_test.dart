@@ -1,29 +1,30 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:siwangjeon/data/m0_content.dart';
 import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 
+import 'support/m1_card_test_content.dart';
+
 void main() {
   group('M1 카드 콘텐츠', () {
     test('23장은 중복 id 없이 분류별 장수를 만족한다', () {
-      final ids = m0Cards.map((card) => card.id).toSet();
-      final purifications = m0Cards.where(_isPurification).toList();
+      final ids = m1Cards.map((card) => card.id).toSet();
+      final purifications = m1Cards.where(_isPurification).toList();
 
-      expect(m0Cards, hasLength(23));
+      expect(m1Cards, hasLength(23));
       expect(ids, hasLength(23));
       expect(
-        m0Cards.where((card) => card.type == CardType.attack),
+        m1Cards.where((card) => card.type == CardType.attack),
         hasLength(8),
       );
       expect(
-        m0Cards.where((card) => card.type == CardType.power),
+        m1Cards.where((card) => card.type == CardType.power),
         hasLength(3),
       );
       expect(purifications, hasLength(5));
       expect(
-        m0Cards.where(
+        m1Cards.where(
           (card) => card.type == CardType.skill && !_isPurification(card),
         ),
         hasLength(7),
@@ -39,7 +40,7 @@ void main() {
         StatusId.poison,
         StatusId.grudge,
       };
-      final statuses = m0Cards
+      final statuses = m1Cards
           .expand((card) => card.effects)
           .whereType<ApplyStatusEffect>()
           .map((effect) => effect.status);
@@ -48,9 +49,9 @@ void main() {
     });
 
     test('업 부과 7장과 서로 다른 대가의 정화 5장을 함께 둔다', () {
-      final purifications = m0Cards.where(_isPurification).toList();
+      final purifications = m1Cards.where(_isPurification).toList();
 
-      expect(m0Cards.where((card) => card.karma > 0), hasLength(7));
+      expect(m1Cards.where((card) => card.karma > 0), hasLength(7));
       for (final card in purifications) {
         final hasHpCost = card.effects.whereType<LoseHpEffect>().isNotEmpty;
         final spendsWholeTurn = card.cost >= CombatTuning.m0.energyPerTurn;
@@ -82,7 +83,7 @@ void main() {
       expect(starterIds.intersection(rewardIds), isEmpty);
       expect(
         starterIds.union(rewardIds),
-        m0Cards.map((card) => card.id).toSet(),
+        m1Cards.map((card) => card.id).toSet(),
       );
     });
 

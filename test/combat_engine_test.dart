@@ -1,6 +1,6 @@
 // M0 전투 엔진 테스트 (기획서 §12-1 "카드 3장으로 순수 Dart 테스트 통과").
 //
-// 실제 카드 3장은 `data/m0_content.dart`에서 가져다 쓴다. 테스트가 자기만의
+// 실제 카드 3장은 `assets/data/cards.json`에서 가져다 쓴다. 테스트가 자기만의
 // 사본을 들고 있으면 밸런스를 만졌을 때 테스트는 옛 수치를 계속 통과시키고,
 // 그 순간부터 이 파일은 게임이 아니라 과거를 검사하게 된다.
 //
@@ -11,7 +11,6 @@
 // 엔진이 순수 Dart라는 것(§7.2)을 확인하는 것도 이 테스트의 목적 중 하나다.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:siwangjeon/data/m0_content.dart';
 import 'package:siwangjeon/domain/combat/combat_engine.dart';
 import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
@@ -21,6 +20,8 @@ import 'package:siwangjeon/domain/model/combat_state.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/game_event.dart';
 import 'package:siwangjeon/domain/model/status.dart';
+
+import 'support/m1_card_test_content.dart';
 
 // ── 적 ────────────────────────────────────────────────────
 
@@ -367,11 +368,10 @@ void main() {
     });
 
     test('새 정화 카드는 업을 낮추고 약화·취약·방어도 대가를 각각 부과한다', () {
-      final fasting = start(deck: deckOf(strike, 10), karma: 30).copyWith(
-        hand: const [fastingVow],
-        drawPile: const [],
-        discardPile: const [],
-      );
+      final fasting = start(
+        deck: deckOf(strike, 10),
+        karma: 30,
+      ).copyWith(hand: [fastingVow], drawPile: const [], discardPile: const []);
       final fastingResult = applyAction(fasting, const PlayCard(handIndex: 0));
       expect(
         fastingResult.state.karma,
@@ -382,11 +382,10 @@ void main() {
         PurificationCardTuning.fastingWeak,
       );
 
-      final veil = start(deck: deckOf(strike, 10), karma: 30).copyWith(
-        hand: const [thinVeil],
-        drawPile: const [],
-        discardPile: const [],
-      );
+      final veil = start(
+        deck: deckOf(strike, 10),
+        karma: 30,
+      ).copyWith(hand: [thinVeil], drawPile: const [], discardPile: const []);
       final veilResult = applyAction(veil, const PlayCard(handIndex: 0));
       expect(veilResult.state.karma, 30 - PurificationCardTuning.veilCleanse);
       expect(
@@ -395,7 +394,7 @@ void main() {
       );
 
       final noBlock = start(deck: deckOf(strike, 10), karma: 30).copyWith(
-        hand: const [shatteredWard],
+        hand: [shatteredWard],
         drawPile: const [],
         discardPile: const [],
       );
@@ -443,8 +442,8 @@ void main() {
 
     test('손패 상한에서는 드로우가 빈자리만 채우고 나머지 덱은 보존한다', () {
       final initial = start(deck: deckOf(strike, 10)).copyWith(
-        hand: const [drawTwo, strike, strike, strike, strike, strike],
-        drawPile: const [defend, strike],
+        hand: [drawTwo, strike, strike, strike, strike, strike],
+        drawPile: [defend, strike],
         discardPile: const [],
       );
 
@@ -462,8 +461,8 @@ void main() {
     test('드로우 효과도 덱이 모자라면 버림더미를 재셔플한다', () {
       final initial = start(deck: deckOf(strike, 5)).copyWith(
         hand: const [drawThree],
-        drawPile: const [strike],
-        discardPile: const [defend, strike],
+        drawPile: [strike],
+        discardPile: [defend, strike],
       );
 
       final result = applyAction(initial, const PlayCard(handIndex: 0));
