@@ -265,12 +265,14 @@ void main() {
         node: node,
         content: content,
         tuning: _combatOnlyTuning,
+        karma: 0,
       );
       final b = encounterForNode(
         runSeed: 76,
         node: node,
         content: content,
         tuning: _combatOnlyTuning,
+        karma: 0,
       );
 
       expect(content.encounterPool.map((enemy) => enemy.id), [

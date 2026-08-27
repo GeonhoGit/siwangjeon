@@ -102,7 +102,7 @@ void main() {
       expect(judgment.activePattern, hasLength(3));
     });
 
-    test('보스 노드는 일반 조우 대신 보스 풀의 시왕 한 명만 배치한다', () {
+    test('보스 노드는 전달한 업으로 심판한 시왕 한 명만 배치한다', () {
       final node = RunNode(
         id: 99,
         depth: 14,
@@ -115,10 +115,12 @@ void main() {
         node: node,
         content: _content(),
         tuning: _tuning,
+        karma: 80,
       );
 
       expect(_tuning.bossEncounterSize, 1);
       expect(enemies.map((enemy) => enemy.id), ['test_yeomra']);
+      expect(enemies.single.phaseIndex, 1, reason: '악업 심판을 명시적으로 전달한다');
     });
 
     test('악업이 아니면 체력 임계 이하에서 2페이즈로 전환한다', () {
