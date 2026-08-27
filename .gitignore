@@ -64,3 +64,6 @@ art-pipeline/sheets/
 
 # ── 대용량 (실행가이드 §11.2 — Release 첨부 + 외장 백업으로 관리) ──
 art-pipeline/lora/*.safetensors
+
+# ── 에이전트 작업 원장 ─────────────────────────────────────
+.superpowers/
