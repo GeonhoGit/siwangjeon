@@ -369,6 +369,36 @@ void main() {
             _rewardTuning.eliteMoneyRewardMultiplier,
       );
     });
+
+    test('시작 후 전투 하나를 이긴 첫 상점에는 구매 액션이 있다', () {
+      final content = _rewardContent();
+      final route = _combatThenShopRoute();
+      var state = startRun(seed: route.seed, characterId: 'm0');
+      state = applyRunAction(
+        state,
+        MoveToNode(nodeId: route.combatNodeId),
+        content: content,
+      );
+      state = _winCurrentCombat(state, content: content, tuning: RunTuning.m1);
+      state = applyRunAction(
+        state,
+        legalRunActions(
+          state,
+          content: content,
+        ).whereType<ChooseCardReward>().first,
+        content: content,
+      );
+      state = applyRunAction(
+        state,
+        MoveToNode(nodeId: route.shopNodeId),
+        content: content,
+      );
+
+      expect(
+        legalRunActions(state, content: content).whereType<BuyShopCard>(),
+        isNotEmpty,
+      );
+    });
   });
 }
 
@@ -400,21 +430,32 @@ RunState _enterFirstCombat({required int seed, required RunContent content}) {
   );
 }
 
-RunState _winCurrentCombat(RunState state, {required RunContent content}) {
+RunState _winCurrentCombat(
+  RunState state, {
+  required RunContent content,
+  RunTuning tuning = _rewardTuning,
+}) {
   var next = state;
-  while (replayRun(next, tuning: _rewardTuning, content: content).isInCombat) {
-    final action =
-        legalRunActions(next, tuning: _rewardTuning, content: content)
-            .whereType<CombatNodeLog>()
-            .firstWhere((log) => log.actions.last is PlayCard);
-    next = applyRunAction(
-      next,
-      action,
-      tuning: _rewardTuning,
-      content: content,
-    );
+  while (replayRun(next, tuning: tuning, content: content).isInCombat) {
+    final action = legalRunActions(next, tuning: tuning, content: content)
+        .whereType<CombatNodeLog>()
+        .firstWhere((log) => log.actions.last is PlayCard);
+    next = applyRunAction(next, action, tuning: tuning, content: content);
   }
   return next;
+}
+
+({int seed, int combatNodeId, int shopNodeId}) _combatThenShopRoute() {
+  for (var seed = 0; seed < 10000; seed++) {
+    final firstNode = generateActOneMap(seed).nodes.first;
+    if (firstNode.type != RunNodeType.combat) continue;
+    for (final nodeId in firstNode.nextNodeIds) {
+      if (generateActOneMap(seed).nodeById(nodeId).type == RunNodeType.shop) {
+        return (seed: seed, combatNodeId: firstNode.id, shopNodeId: nodeId);
+      }
+    }
+  }
+  throw StateError('전투 뒤 상점 경로를 찾지 못했다');
 }
 
 MoveToNode _nextMove(RunState state, {required RunContent content}) =>

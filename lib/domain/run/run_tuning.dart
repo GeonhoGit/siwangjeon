@@ -40,10 +40,10 @@ class RunTuning {
     this.eliteEncounterSize = 3,
     this.bossEncounterSize = 3,
     this.cardRewardChoiceCount = 3,
-    this.baseMoneyReward = 15,
+    this.baseMoneyReward = 30,
     this.eliteMoneyRewardMultiplier = 2,
     this.shopCardChoiceCount = 3,
-    this.shopCardPrice = 45,
+    this.shopCardPrice = 30,
     this.shopRemoveCardPrice = 60,
     this.wildCampRestHeal = 24,
     this.wildCampRepentKarmaCleanse = 3,
@@ -150,6 +150,12 @@ class RunTuning {
   final int cardRewardChoiceCount;
 
   /// 일반 전투 승리 뒤 즉시 더하는 노잣돈.
+  ///
+  /// M1에서는 이 값으로 첫 상점의 카드 한 장 또는 야장의 참회 한 번을 정확히
+  /// 낼 수 있게 한다. 카드 제거는 두 번의 일반 승리(또는 정예전)를 요구해 세
+  /// 상품을 한 번에 고르는 선택 소실을 막고, 정예전은 계속 이 값의 두 배다.
+  /// 이는 막힌 초반 루프만 푸는 임시값이며, M2의 10만 런 시뮬레이터 조율 전까지
+  /// 경제 균형을 뜻하지 않는다.
   final int baseMoneyReward;
 
   /// 정예전의 임시 보상 배수. 유물이 들어오면 카드 보상과 함께 이 계층에서
@@ -157,6 +163,9 @@ class RunTuning {
   final int eliteMoneyRewardMultiplier;
 
   /// 상점 한 곳에서 제시하는 서로 다른 카드 수와 카드 한 장의 가격.
+  ///
+  /// 첫 일반 전투 보상과 같게 두어 셋 중 한 장만 살 수 있게 한다. 제거 가격은
+  /// 더 높게 유지해 덱 압축이 첫 상점의 자동 정답이 되지 않게 한다.
   final int shopCardChoiceCount;
   final int shopCardPrice;
 
