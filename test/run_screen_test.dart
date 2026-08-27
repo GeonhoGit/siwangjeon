@@ -6,8 +6,11 @@ import 'package:siwangjeon/app/run_controller.dart';
 import 'package:siwangjeon/data/m0_content.dart'
     show cleanCut, greatPurification, ironGuard, steadyBreath;
 import 'package:siwangjeon/data/m1_events.dart';
+import 'package:siwangjeon/data/m1_relics.dart';
+import 'package:siwangjeon/domain/combat/relic_preview.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
+import 'package:siwangjeon/domain/model/combat_action.dart';
 import 'package:siwangjeon/domain/model/enemy.dart';
 import 'package:siwangjeon/domain/model/status.dart';
 import 'package:siwangjeon/domain/run/run_action.dart';
@@ -172,6 +175,29 @@ Future<void> _pumpReward(
         runControllerProvider.overrideWith(
           () => _StaticRunController(_rewardSession()),
         ),
+      ],
+      child: const SiwangjeonApp(),
+    ),
+  );
+  await tester.pump();
+}
+
+Future<void> _pumpStaticRun(
+  WidgetTester tester, {
+  required RunSession session,
+  required _TestDevice device,
+  required double textScale,
+}) async {
+  tester.view.physicalSize = device.physicalSize;
+  tester.view.devicePixelRatio = device.devicePixelRatio;
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
+  addTearDown(tester.view.reset);
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        runControllerProvider.overrideWith(() => _StaticRunController(session)),
       ],
       child: const SiwangjeonApp(),
     ),
@@ -386,6 +412,103 @@ void main() {
       expect(nextCombatCards.map((card) => card.id), contains(chosen.id));
     } finally {
       await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('정예 승리 뒤 유물 효과와 시점을 보고 고르면 지도로 돌아간다', (tester) async {
+    final content = _eliteVictoryContent();
+    final state = _wonEliteRunState(seed: 20260831, content: content);
+    await _pumpRun(
+      tester,
+      seed: 20260831,
+      content: content,
+      initialState: state,
+    );
+
+    try {
+      final container = _containerFor(tester);
+      final reward = container
+          .read(runControllerProvider)
+          .progress
+          .pendingRelicReward!;
+      final chosen = reward.relics.first;
+      final preview = previewRelic(chosen);
+
+      expect(find.byKey(const ValueKey('relic-reward-screen')), findsOneWidget);
+      expect(reward.relics, hasLength(3));
+      expect(find.text('정예 승리 보상 · 업 +${reward.karmaGained}'), findsOneWidget);
+      expect(find.byKey(ValueKey('reward-relic-${chosen.id}')), findsOneWidget);
+      expect(find.text('발동: ${preview.triggerLabel}'), findsOneWidget);
+      expect(find.text(preview.effectLabel), findsOneWidget);
+
+      await tester.tap(find.byKey(ValueKey('reward-relic-${chosen.id}')));
+      await tester.pump();
+
+      expect(find.byType(RunMapScreen), findsOneWidget);
+      expect(
+        container
+            .read(runControllerProvider)
+            .progress
+            .relics
+            .map((relic) => relic.id),
+        contains(chosen.id),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('map-relic-inventory')));
+      await tester.pumpAndSettle();
+      expect(find.text(chosen.name), findsOneWidget);
+      expect(find.text('발동: ${preview.triggerLabel}'), findsOneWidget);
+      expect(find.text(preview.effectLabel), findsOneWidget);
+    } finally {
+      await _disposeTree(tester);
+    }
+  });
+
+  testWidgets('유물 보상과 14개 보유 목록은 경계 기기와 글꼴 배율에서 넘치지 않는다', (tester) async {
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        final rewardSession = _relicRewardSession();
+        await _pumpStaticRun(
+          tester,
+          session: rewardSession,
+          device: device,
+          textScale: textScale,
+        );
+        try {
+          for (final relic
+              in rewardSession.progress.pendingRelicReward!.relics) {
+            _expectMinimumTapTargets(
+              tester,
+              find.byKey(ValueKey('reward-relic-${relic.id}')),
+            );
+          }
+          expect(tester.takeException(), isNull, reason: device.name);
+        } finally {
+          await _disposeTree(tester);
+        }
+
+        await _pumpStaticRun(
+          tester,
+          session: _relicInventorySession(),
+          device: device,
+          textScale: textScale,
+        );
+        try {
+          _expectMinimumTapTargets(
+            tester,
+            find.byKey(const ValueKey('map-relic-inventory')),
+          );
+          await tester.tap(find.byKey(const ValueKey('map-relic-inventory')));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('relic-inventory-list')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull, reason: device.name);
+        } finally {
+          await _disposeTree(tester);
+        }
+      }
     }
   });
 
@@ -947,6 +1070,65 @@ RunSession _rewardSession() {
   );
 }
 
+RunSession _relicRewardSession() {
+  const nodeId = 0;
+  final relics = m1Relics.take(3).toList();
+  return RunSession(
+    state: const RunState(seed: 1, characterId: 'm0', actionLog: []),
+    progress: RunProgress(
+      map: RunMap(
+        nodes: [
+          RunNode(
+            id: nodeId,
+            depth: 0,
+            type: RunNodeType.elite,
+            nextNodeIds: const [],
+          ),
+        ],
+      ),
+      visitedNodeIds: const [nodeId],
+      hp: 80,
+      maxHp: 80,
+      karma: 3,
+      money: 0,
+      deck: const [],
+      pendingRelicReward: RelicReward(
+        nodeId: nodeId,
+        relics: relics,
+        karmaGained: 3,
+      ),
+    ),
+    legalActions: [
+      for (final relic in relics)
+        ChooseRelicReward(nodeId: nodeId, relicId: relic.id),
+    ],
+  );
+}
+
+RunSession _relicInventorySession() => RunSession(
+  state: const RunState(seed: 1, characterId: 'm0', actionLog: []),
+  progress: RunProgress(
+    map: RunMap(
+      nodes: [
+        RunNode(
+          id: 0,
+          depth: 0,
+          type: RunNodeType.combat,
+          nextNodeIds: const [],
+        ),
+      ],
+    ),
+    visitedNodeIds: const [0],
+    hp: 80,
+    maxHp: 80,
+    karma: 0,
+    money: 0,
+    deck: const [],
+    relics: m1Relics.take(14).toList(),
+  ),
+  legalActions: const [],
+);
+
 void _expectCenteredRows(
   RunMap map,
   Map<int, Offset> centers,
@@ -1096,3 +1278,55 @@ RunContent _victoryContent() => RunContent(
   cardRewardPool: _rewardCards,
   events: m1Events,
 );
+
+RunContent _eliteVictoryContent() => RunContent(
+  maxHp: 80,
+  deck: List<CardDef>.filled(64, _finisher),
+  encounterPool: [
+    for (var index = 0; index < 3; index++)
+      Enemy(
+        id: 'elite_ui_enemy_$index',
+        name: '정예 테스트 적 $index',
+        hp: 1,
+        maxHp: 1,
+        pattern: const [EnemyDefend(0)],
+      ),
+  ],
+  cardRewardPool: _rewardCards,
+  relicRewardPool: m1Relics,
+  events: m1Events,
+);
+
+RunState _wonEliteRunState({required int seed, required RunContent content}) {
+  var state = startRun(seed: seed, characterId: 'm0');
+  while (true) {
+    final progress = replayRun(state, content: content);
+    if (progress.currentNode?.type == RunNodeType.elite &&
+        !progress.isInCombat) {
+      return state;
+    }
+
+    final legal = legalRunActions(state, content: content);
+    if (progress.pendingCardReward != null) {
+      state = applyRunAction(
+        state,
+        legal.whereType<ChooseCardReward>().first,
+        content: content,
+      );
+    } else if (progress.isInCombat) {
+      state = applyRunAction(
+        state,
+        legal.whereType<CombatNodeLog>().firstWhere(
+          (action) => action.actions.last is PlayCard,
+        ),
+        content: content,
+      );
+    } else {
+      state = applyRunAction(
+        state,
+        legal.whereType<MoveToNode>().first,
+        content: content,
+      );
+    }
+  }
+}

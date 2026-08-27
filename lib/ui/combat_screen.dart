@@ -28,6 +28,7 @@ import '../domain/model/enemy.dart';
 import '../domain/model/game_event.dart';
 import '../domain/model/status.dart';
 import 'labels.dart';
+import 'relic_inventory.dart';
 
 const _attackColor = Color(0xFFB2332B);
 const _skillColor = Color(0xFF2E6B6B);
@@ -275,6 +276,10 @@ class _StatusBar extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          RelicInventoryButton(
+            key: const ValueKey('combat-relic-inventory'),
+            relics: state.relics,
           ),
         ],
       ),
@@ -628,6 +633,8 @@ class _EventStrip extends StatelessWidget {
           lines.add('업 +${event.amount}');
         case EnergyGained():
           lines.add('기력 +${event.amount}');
+        case HpGained():
+          lines.add('체력 +${event.amount}');
         case StatusApplied():
           lines.add(
             '${who(event.targetIndex)} ${statusLabel(event.status)} +${event.stacks}',

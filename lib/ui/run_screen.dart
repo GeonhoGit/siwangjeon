@@ -19,6 +19,7 @@ import '../domain/run/run_node_type.dart';
 import '../domain/run/run_tuning.dart';
 import 'combat_screen.dart';
 import 'labels.dart';
+import 'relic_inventory.dart';
 
 const _mapNodeDiameter = 56.0;
 const _mapRowExtent = 96.0;
@@ -41,6 +42,12 @@ class RunScreen extends ConsumerWidget {
     }
     if (progress.pendingCardReward != null) {
       return _RewardScreen(session: session, onChoose: controller.dispatch);
+    }
+    if (progress.pendingRelicReward != null) {
+      return _RelicRewardScreen(
+        session: session,
+        onChoose: controller.dispatch,
+      );
     }
     if (progress.pendingShop != null) {
       return _ShopScreen(session: session, onChoose: controller.dispatch);
@@ -155,6 +162,10 @@ class _RunMapScreenState extends State<RunMapScreen> {
                   Text('체력 ${progress.hp}/${progress.maxHp}'),
                   const SizedBox(width: 12),
                   Text('노잣돈 ${progress.money}'),
+                  RelicInventoryButton(
+                    key: const ValueKey('map-relic-inventory'),
+                    relics: progress.relics,
+                  ),
                 ],
               ),
             ),
@@ -456,6 +467,61 @@ class _RewardScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RelicRewardScreen extends StatelessWidget {
+  const _RelicRewardScreen({required this.session, required this.onChoose});
+
+  final RunSession session;
+  final ValueChanged<ChooseRelicReward> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final reward = session.progress.pendingRelicReward!;
+    final choicesByRelicId = {
+      for (final action in session.legalActions.whereType<ChooseRelicReward>())
+        action.relicId: action,
+    };
+
+    return _NodeChoiceScaffold(
+      screenKey: const ValueKey('relic-reward-screen'),
+      title: '정예 전리품',
+      status: '현재 업 ${session.progress.karma} · 노잣돈 ${session.progress.money}',
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        itemCount: reward.relics.length + 1,
+        separatorBuilder: (context, index) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('유물 하나를 고르세요'),
+                const SizedBox(height: 4),
+                Text(
+                  key: const ValueKey('relic-reward-karma'),
+                  '정예 승리 보상 · 업 +${reward.karmaGained}',
+                ),
+              ],
+            );
+          }
+
+          final relic = reward.relics[index - 1];
+          final choice = choicesByRelicId[relic.id];
+          return FilledButton(
+            key: ValueKey('reward-relic-${relic.id}'),
+            onPressed: choice == null ? null : () => onChoose(choice),
+            style: FilledButton.styleFrom(
+              alignment: Alignment.centerLeft,
+              minimumSize: const Size.fromHeight(48),
+              padding: EdgeInsets.zero,
+            ),
+            child: RelicSummary(relic: relic),
+          );
+        },
       ),
     );
   }
