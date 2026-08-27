@@ -110,13 +110,17 @@ class CombatTuning {
 }
 
 /// M1 정화 카드의 정화량과 대가. §3.3은 정화에 대가만 요구할 뿐 수치를 정하지
-/// 않았으므로, 모두 **M2의 10만 런 시뮬레이터 조율 전 임시값**이다. 콘텐츠에는
-/// 카드가 업 축에서 하는 일만 남기고, 이 수치는 여기 한 곳에서 바꾼다.
+/// 않았으므로, 원본과 강화본을 포함해 모두 **M2의 10만 런 시뮬레이터 조율 전
+/// 임시값**이다. 콘텐츠에는 카드가 업 축에서 하는 일만 남기고, 이 수치는 여기
+/// 한 곳에서 바꾼다.
 abstract final class PurificationCardTuning {
   static const fastingCleanse = 7;
+  static const fastingEnhancedCleanse = 10;
   static const fastingWeak = 2;
   static const veilCleanse = 8;
+  static const veilEnhancedCleanse = 11;
   static const veilVulnerable = 2;
   static const shatteredWardCleanse = 10;
+  static const shatteredWardEnhancedCleanse = 13;
   static const shatteredWardBlockCost = 8;
 }

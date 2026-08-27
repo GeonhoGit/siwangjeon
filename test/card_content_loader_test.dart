@@ -1,10 +1,13 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:siwangjeon/data/card_content_loader.dart';
 import 'package:siwangjeon/data/m0_content.dart';
+import 'package:siwangjeon/domain/combat/card_enhancement.dart';
 import 'package:siwangjeon/domain/combat/tuning.dart';
 import 'package:siwangjeon/domain/effect/card_effect.dart';
+import 'package:siwangjeon/domain/model/card.dart';
 
 import 'support/m1_card_test_content.dart';
 
@@ -41,6 +44,81 @@ void main() {
       );
     });
 
+    test('정화 3종의 원본과 강화본은 각각 정화량 튜닝을 따른다', () {
+      final source = File(m1CardsAssetPath).readAsStringSync();
+      final rawCards = (jsonDecode(source) as List)
+          .map((raw) => (raw as Map).cast<String, Object?>())
+          .toList();
+      final cards = const CardContentLoader().decode(source);
+
+      const expectedTunings =
+          <
+            ({
+              String id,
+              String baseKey,
+              int baseAmount,
+              String enhancedKey,
+              int enhancedAmount,
+            })
+          >[
+            (
+              id: 'card_fasting_vow',
+              baseKey: 'fastingCleanse',
+              baseAmount: PurificationCardTuning.fastingCleanse,
+              enhancedKey: 'fastingEnhancedCleanse',
+              enhancedAmount: PurificationCardTuning.fastingEnhancedCleanse,
+            ),
+            (
+              id: 'card_thin_veil',
+              baseKey: 'veilCleanse',
+              baseAmount: PurificationCardTuning.veilCleanse,
+              enhancedKey: 'veilEnhancedCleanse',
+              enhancedAmount: PurificationCardTuning.veilEnhancedCleanse,
+            ),
+            (
+              id: 'card_shattered_ward',
+              baseKey: 'shatteredWardCleanse',
+              baseAmount: PurificationCardTuning.shatteredWardCleanse,
+              enhancedKey: 'shatteredWardEnhancedCleanse',
+              enhancedAmount:
+                  PurificationCardTuning.shatteredWardEnhancedCleanse,
+            ),
+          ];
+
+      for (final expected in expectedTunings) {
+        final rawCard = rawCards.singleWhere(
+          (card) => card['id'] == expected.id,
+        );
+        final rawUpgrade = rawCard['upgrade'] as Map<String, Object?>;
+        final baseCleanse = _rawCleanseEffect(rawCard['effects']);
+        final enhancedCleanse = _rawCleanseEffect(rawUpgrade['effects']);
+        final card = cards.singleWhere((card) => card.id == expected.id);
+
+        expect(
+          baseCleanse['amountTuning'],
+          expected.baseKey,
+          reason: expected.id,
+        );
+        expect(baseCleanse.containsKey('amount'), isFalse, reason: expected.id);
+        expect(
+          enhancedCleanse['amountTuning'],
+          expected.enhancedKey,
+          reason: expected.id,
+        );
+        expect(
+          enhancedCleanse.containsKey('amount'),
+          isFalse,
+          reason: expected.id,
+        );
+        expect(_cleanseAmount(card), -expected.baseAmount, reason: expected.id);
+        expect(
+          _cleanseAmount(enhancedCard(card)),
+          -expected.enhancedAmount,
+          reason: expected.id,
+        );
+      }
+    });
+
     test('모든 앱 카드가 upgrade를 명시한다', () {
       for (final card in m1Cards) {
         expect(card.upgrade, isNotNull, reason: card.id);
@@ -72,3 +150,16 @@ void main() {
     });
   });
 }
+
+Map<String, Object?> _rawCleanseEffect(Object? rawEffects) =>
+    (rawEffects as List)
+        .map((raw) => (raw as Map).cast<String, Object?>())
+        .singleWhere(
+          (effect) =>
+              effect['op'] == 'changeKarma' && effect['negative'] == true,
+        );
+
+int _cleanseAmount(CardDef card) => card.effects
+    .whereType<ChangeKarmaEffect>()
+    .singleWhere((effect) => effect.amount < 0)
+    .amount;
