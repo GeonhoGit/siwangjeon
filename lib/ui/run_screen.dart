@@ -14,6 +14,7 @@ import '../domain/model/card.dart';
 import '../domain/run/run_action.dart';
 import '../domain/run/run_engine.dart';
 import '../domain/run/run_event.dart';
+import '../domain/run/judgment_preview.dart';
 import '../domain/run/run_map.dart';
 import '../domain/run/run_node_type.dart';
 import '../domain/run/run_tuning.dart';
@@ -38,7 +39,10 @@ class RunScreen extends ConsumerWidget {
     final progress = session.progress;
 
     if (progress.isOver) {
-      return _RunEndedScreen(onRestart: controller.restart);
+      return _RunEndedScreen(
+        outcome: progress.outcome!,
+        onRestart: controller.restart,
+      );
     }
     if (progress.pendingCardReward != null) {
       return _RewardScreen(session: session, onChoose: controller.dispatch);
@@ -173,6 +177,11 @@ class _RunMapScreenState extends State<RunMapScreen> {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: _MapLegend(),
             ),
+            if (progress.judgmentPreview case final preview?)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _JudgmentNotice(preview: preview),
+              ),
             const SizedBox(height: 8),
             Expanded(
               // §5.1의 하단 60%는 한 전투에서 엄지로 조작할 카드·버튼을
@@ -247,6 +256,38 @@ class _MapLegend extends StatelessWidget {
         for (final type in RunNodeType.values)
           _LegendItem(symbol: _nodeSymbol(type), label: _nodeName(type)),
       ],
+    );
+  }
+}
+
+/// 심판 문구는 [JudgmentPreview]가 만들고, 화면은 전투 전 지도에서 읽기 쉬운
+/// 위치에 놓기만 한다. UI가 업 구간을 다시 해석하지 않는다.
+class _JudgmentNotice extends StatelessWidget {
+  const _JudgmentNotice({required this.preview});
+
+  final JudgmentPreview preview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('judgment-preview'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3A1D29),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFC9A227)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            preview.title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 2),
+          Text('${preview.bandLabel} · ${preview.effectLabel}'),
+        ],
+      ),
     );
   }
 }
@@ -978,13 +1019,15 @@ List<String> _cardEffectLines(CardDef card) {
 }
 
 class _RunEndedScreen extends StatelessWidget {
-  const _RunEndedScreen({required this.onRestart});
+  const _RunEndedScreen({required this.outcome, required this.onRestart});
 
+  final RunOutcome outcome;
   final VoidCallback onRestart;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: ValueKey('run-ended-${outcome.name}'),
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -993,11 +1036,16 @@ class _RunEndedScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  '여정이 끝났습니다',
+                Text(
+                  runOutcomeTitle(outcome),
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+                const SizedBox(height: 20),
+                Text(runOutcomeMessage(outcome), textAlign: TextAlign.center),
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: onRestart,
