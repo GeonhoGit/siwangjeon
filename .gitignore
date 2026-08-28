@@ -59,17 +59,11 @@ app.*.map.json
 # ── 에이전트 작업 원장 ─────────────────────────────────────
 .superpowers/
 
-# AI 아트 파이프라인: 설정·워크플로·출처만 Git에 남긴다. 원본/학습 크롭/가중치와
-# 생성 이미지는 대용량이므로 별도 저장소에 보관해 일반 clone과 이력을 비대하게 만들지 않는다.
-art-pipeline/dataset/raw/**
-!art-pipeline/dataset/raw/README.md
-art-pipeline/dataset/train/**
-!art-pipeline/dataset/train/README.md
-art-pipeline/lora/**
-!art-pipeline/lora/README.md
-!art-pipeline/lora/train_config.toml
-art-pipeline/raw/**
-!art-pipeline/raw/README.md
-art-pipeline/final/**
-!art-pipeline/final/README.md
-art-pipeline/sheets/**
+# ── AI 에셋 파이프라인 (실행가이드 §11.1) ──
+# 수집 원본과 생성 원본은 저장소에 넣지 않는다. 별도 드라이브에 백업한다.
+art-pipeline/dataset/raw/
+art-pipeline/raw/
+art-pipeline/sheets/
+
+# ── 대용량 (실행가이드 §11.2 — Release 첨부 + 외장 백업으로 관리) ──
+art-pipeline/lora/*.safetensors

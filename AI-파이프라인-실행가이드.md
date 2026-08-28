@@ -591,40 +591,49 @@ AI로 30~50장 후보를 뽑아 2~3장으로 좁힌 뒤, **리터칭 외주**를
 ### 11.1 구조
 
 ```
-art-pipeline/
-├─ MODEL.md              채택 모델·라이선스 기록 (§1.3)
-├─ dataset/
-│   ├─ SOURCES.md        출처·공공누리 유형 기록 (§2.4)
-│   ├─ raw/              수집 원본           [gitignore]
-│   └─ train/            크롭·캡션 완료본     [커밋]
-├─ lora/
-│   ├─ swjdostyle.safetensors
-│   └─ train_config.toml  학습 설정 (§4.2)
-├─ workflows/
-│   ├─ card_art_api.json
-│   ├─ enemy_api.json
-│   └─ boss_api.json
-├─ prompts/
-│   ├─ template.md        고정부 정의 (§6.1)
-│   └─ cards_prompts.json 생성된 220개
-├─ scripts/
-│   ├─ gen_prompts.py
-│   ├─ batch_generate.py
-│   └─ postprocess.sh
-├─ raw/                   생성 원본 1,760장  [gitignore, 외장 백업]
-├─ final/                 선별본             [커밋]
-└─ picks.txt              선별 기록
+(저장소 루트)
+├─ art-pipeline/
+│   ├─ MODEL.md                채택 모델·라이선스 기록 (§1.3)
+│   ├─ dataset/
+│   │   ├─ SOURCES.md          출처·공공누리 유형 기록 (§2.4)
+│   │   ├─ raw/                수집 원본           [gitignore]
+│   │   └─ train/              크롭·캡션 완료본     [커밋]
+│   ├─ lora/
+│   │   ├─ swjdostyle.safetensors [Git LFS 또는 Release 첨부 + 외장 백업]
+│   │   └─ train_config.toml    학습 설정 (§4.2)     [커밋]
+│   ├─ workflows/
+│   │   └─ card_art_api.json    카드용 API 워크플로  [커밋]
+│   ├─ prompts/
+│   │   ├─ template.txt         고정부 정의 (§6.1)   [커밋]
+│   │   ├─ negative.txt         공통 네거티브        [커밋]
+│   │   ├─ system_prompt.md     LLM 대상 묘사 계약   [커밋]
+│   │   ├─ validation_rules.json 기계 검증 규칙      [커밋]
+│   │   └─ cards_prompts.json  생성된 220개          [커밋]
+│   ├─ raw/                     생성 원본 1,760장    [gitignore, 외장 백업]
+│   ├─ final/                   선별본·출시 카드 아트 [커밋]
+│   └─ picks.txt                선별 기록             [커밋]
+└─ scripts/
+    └─ gen_prompts.py           프롬프트 생성·검증   [커밋]
 ```
+
+`scripts/`는 저장소 루트에 둔다. §6.2와 §7.2의 `scripts/...` 경로도 이 기준이다.
+`batch_generate.py`와 `postprocess.sh`는 아직 저장소에 만들지 않은 실행 예시다. 구현할 때도
+`art-pipeline/scripts/`가 아니라 루트 `scripts/`에 둔다.
+
+`workflows/enemy_api.json`과 `workflows/boss_api.json`은 아직 만들지 않았다. 카드 아트와
+출력 해상도·구도가 다르므로 카드 워크플로를 복사하지 않고, 적의 투명 배경·전신 구도와
+보스의 더 큰 실루엣·여백 구도를 정한 뒤 각각 **API Format**으로 내보낸다.
 
 ### 11.2 반드시 커밋할 것
 
-**LoRA 가중치, 워크플로 JSON, 프롬프트 템플릿, 학습 설정, picks.txt.**
+**워크플로 JSON, 프롬프트 계약, 학습 설정, 크롭·캡션 완료본, final/ 출시 아트, picks.txt.**
 
 이유는 하나다. 출시 6개월 뒤 카드 30장을 추가할 때 같은 화풍이 안 나오면
 **그때까지 만든 220장이 전부 어색해진다.** 그 시점에 LoRA를 잃어버렸으면
 전량 재생성 외에 방법이 없다.
 
-`.safetensors`는 수십~수백 MB라 Git LFS를 쓰거나 별도 백업을 병행한다.
+`.safetensors`는 수십~수백 MB라 Git LFS를 쓰거나 Release 첨부와 외장 백업을 병행한다.
+어느 방식을 택했는지는 가중치 파일명·확정 epoch·강도와 함께 작업 기록에 남긴다.
 
 ### 11.3 크레딧 표기
 
