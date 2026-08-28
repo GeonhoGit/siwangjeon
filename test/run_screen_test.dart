@@ -1059,7 +1059,8 @@ void main() {
       textScale: 1.3,
     );
     try {
-      expect(find.textContaining('${_rewardA.name}+'), findsOneWidget);
+      expect(find.byKey(ValueKey('card-name-${_rewardA.id}')), findsOneWidget);
+      expect(find.text('+'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('shop-remove-enhanced-ui-card')),
         findsOneWidget,
