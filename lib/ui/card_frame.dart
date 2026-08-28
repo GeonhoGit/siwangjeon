@@ -285,7 +285,10 @@ class _CompactCardContents extends StatelessWidget {
   }
 }
 
-const _typeColorStripeWidth = 36.0;
+// 248dp 전체 카드에서 약 3%인 8dp만 남긴다. 카드 유형을 훑어볼 색 신호는
+// 유지하면서, 세로 이름을 담던 빈 36dp 띠의 28dp를 이름·아트·규칙 상자에
+// 돌려준다. 96dp 손패는 이 띠를 쓰지 않는 별도 컴팩트 레이아웃이라 그대로 둔다.
+const _typeColorStripeWidth = 8.0;
 const _artlessIdentityAreaHeight = 46.0;
 const _typeMedallionSpace = 22.0;
 
