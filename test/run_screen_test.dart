@@ -1060,7 +1060,7 @@ void main() {
     );
     try {
       expect(find.byKey(ValueKey('card-name-${_rewardA.id}')), findsOneWidget);
-      expect(find.text('+'), findsOneWidget);
+      expect(find.text('${_rewardA.name}+'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('shop-remove-enhanced-ui-card')),
         findsOneWidget,

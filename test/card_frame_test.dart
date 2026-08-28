@@ -4,6 +4,8 @@ import 'package:siwangjeon/domain/effect/card_effect.dart';
 import 'package:siwangjeon/domain/model/card.dart';
 import 'package:siwangjeon/ui/card_frame.dart';
 
+import 'support/m1_card_test_content.dart';
+
 const _attackCard = CardDef(
   id: 'frame_attack',
   name: '원한의 칼날',
@@ -171,44 +173,36 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('긴 이름은 글자를 세로로 쌓고 1.0×와 1.3×에서 띠를 넘지 않는다', (tester) async {
-    final names = [
-      (card: _attackCard, characters: const ['원', '한', '의', '칼', '날']),
-      (card: _purificationCard, characters: const ['대', '정', '화']),
-      (card: _confessionCard, characters: const ['고', '해']),
+  testWidgets('긴 이름은 가로 한 줄로 그리고 1.0×와 1.3×에서 프레임을 넘지 않는다', (tester) async {
+    final cards = [
+      _attackCard,
+      clingingOath,
+      _purificationCard,
+      _confessionCard,
     ];
     for (final textScale in [1.0, 1.3]) {
-      for (final name in names) {
+      for (final card in cards) {
         await tester.pumpWidget(
-          _frameHarness(width: 248, card: name.card, textScale: textScale),
+          _frameHarness(width: 248, card: card, textScale: textScale),
         );
         await tester.pump();
 
-        final ribbon = find.byKey(ValueKey('card-name-${name.card.id}'));
-        final ribbonBounds = tester.getRect(ribbon);
-        final letters = <Finder>[];
-        for (final character in name.characters) {
-          final letter = find.descendant(
-            of: ribbon,
-            matching: find.text(character),
-          );
-          expect(letter, findsOneWidget);
-          final bounds = tester.getRect(letter);
-          expect(bounds.left, greaterThanOrEqualTo(ribbonBounds.left));
-          expect(bounds.right, lessThanOrEqualTo(ribbonBounds.right));
-          expect(bounds.top, greaterThanOrEqualTo(ribbonBounds.top));
-          expect(bounds.bottom, lessThanOrEqualTo(ribbonBounds.bottom));
-          letters.add(letter);
-        }
-        for (var index = 1; index < letters.length; index++) {
-          expect(
-            tester.getRect(letters[index - 1]).top,
-            lessThan(tester.getRect(letters[index]).top),
-          );
-        }
+        final name = find.byKey(ValueKey('card-name-${card.id}'));
+        final cardBounds = tester.getRect(
+          find.byKey(ValueKey('card-frame-${card.id}')),
+        );
+        final nameBounds = tester.getRect(name);
+        final renderedName = tester.widget<Text>(name);
+
+        expect(renderedName.data, card.name);
+        expect(nameBounds.width, greaterThan(nameBounds.height));
+        expect(nameBounds.left, greaterThanOrEqualTo(cardBounds.left));
+        expect(nameBounds.right, lessThanOrEqualTo(cardBounds.right));
+        expect(nameBounds.top, greaterThanOrEqualTo(cardBounds.top));
+        expect(nameBounds.bottom, lessThanOrEqualTo(cardBounds.bottom));
         expect(
-          find.descendant(of: ribbon, matching: find.byType(RotatedBox)),
-          findsNothing,
+          find.byKey(ValueKey('card-type-stripe-${card.id}')),
+          findsOneWidget,
         );
         expect(tester.takeException(), isNull);
       }
