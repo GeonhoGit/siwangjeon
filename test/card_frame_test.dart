@@ -216,7 +216,7 @@ void main() {
     }
   });
 
-  testWidgets('아트 asset이 있으면 세로 슬롯을 넣어 전체 프레임을 키운다', (tester) async {
+  testWidgets('아트 asset은 규칙 옆 3:4 썸네일로 표시한다', (tester) async {
     await tester.pumpWidget(_frameHarness(width: 248, card: _attackCard));
     await tester.pump();
     final artlessHeight = tester
@@ -242,12 +242,35 @@ void main() {
         .getSize(find.byKey(const ValueKey('card-art-frame_attack')))
         .height;
     expect(art.aspectRatio, cardArtAspectRatio);
-    expect(artHeight - artlessHeight, greaterThan(100));
+    expect(artHeight, greaterThanOrEqualTo(artlessHeight));
     expect(
-      artHeight - artlessHeight,
-      closeTo(artSlotHeight - 46, 0.1),
-      reason: '아트가 없는 식별 영역만 실제 아트 슬롯으로 대체한다.',
+      artSlotHeight,
+      closeTo(48 / cardArtAspectRatio, 0.1),
+      reason: '아트는 후보 세 장을 비교할 수 있는 48×64dp 썸네일이다.',
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('아트 카드의 이름 띠와 아트 영역은 글자 배율에서 겹치지 않는다', (tester) async {
+    for (final textScale in [1.0, 1.3]) {
+      await tester.pumpWidget(
+        _frameHarness(
+          width: 248,
+          card: _attackCard,
+          artResolver: _virtualCardArt,
+          textScale: textScale,
+        ),
+      );
+      await tester.pump();
+
+      final nameBand = tester.getRect(
+        find.byKey(const ValueKey('card-name-band-frame_attack')),
+      );
+      final art = tester.getRect(
+        find.byKey(const ValueKey('card-art-frame_attack')),
+      );
+      expect(nameBand.bottom, lessThanOrEqualTo(art.top));
+      expect(tester.takeException(), isNull, reason: '글자 배율 $textScale');
+    }
   });
 }

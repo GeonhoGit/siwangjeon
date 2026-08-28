@@ -21,6 +21,7 @@ import 'package:siwangjeon/domain/run/run_node_type.dart';
 import 'package:siwangjeon/domain/run/run_state.dart';
 import 'package:siwangjeon/domain/run/run_tuning.dart';
 import 'package:siwangjeon/ui/combat_screen.dart';
+import 'package:siwangjeon/ui/card_frame.dart';
 import 'package:siwangjeon/ui/relic_inventory.dart';
 import 'package:siwangjeon/ui/run_screen.dart';
 
@@ -53,6 +54,12 @@ const _galaxyS25Ultra = _TestDevice(
 
 const _boundaryDevices = [_pixel8, _galaxyS25Ultra];
 const _mapSeeds = [0, 1, 7, 53, 20260826, 20260827, 987654321];
+
+Future<String?> _noCardArt(AssetBundle assetBundle, String cardId) async =>
+    null;
+
+Future<String?> _virtualCardArt(AssetBundle assetBundle, String cardId) async =>
+    'assets/card_art/$cardId.webp';
 
 const _finisher = CardDef(
   id: 'ui_finisher',
@@ -140,6 +147,7 @@ Future<void> _pumpRun(
   double textScale = 1.0,
   RunContent? content,
   RunState? initialState,
+  CardArtResolver artResolver = _noCardArt,
 }) async {
   tester.view.physicalSize = device.physicalSize;
   tester.view.devicePixelRatio = device.devicePixelRatio;
@@ -155,7 +163,7 @@ Future<void> _pumpRun(
         if (initialState != null)
           runInitialStateProvider.overrideWithValue(initialState),
       ],
-      child: const SiwangjeonApp(),
+      child: SiwangjeonApp(home: RunScreen(artResolver: artResolver)),
     ),
   );
   await tester.pump();
@@ -165,6 +173,7 @@ Future<void> _pumpReward(
   WidgetTester tester, {
   required _TestDevice device,
   required double textScale,
+  CardArtResolver artResolver = _noCardArt,
 }) async {
   tester.view.physicalSize = device.physicalSize;
   tester.view.devicePixelRatio = device.devicePixelRatio;
@@ -179,7 +188,7 @@ Future<void> _pumpReward(
           () => _StaticRunController(_rewardSession()),
         ),
       ],
-      child: const SiwangjeonApp(),
+      child: SiwangjeonApp(home: RunScreen(artResolver: artResolver)),
     ),
   );
   await tester.pump();
@@ -190,6 +199,7 @@ Future<void> _pumpStaticRun(
   required RunSession session,
   required _TestDevice device,
   required double textScale,
+  CardArtResolver artResolver = _noCardArt,
 }) async {
   tester.view.physicalSize = device.physicalSize;
   tester.view.devicePixelRatio = device.devicePixelRatio;
@@ -202,7 +212,7 @@ Future<void> _pumpStaticRun(
       overrides: [
         runControllerProvider.overrideWith(() => _StaticRunController(session)),
       ],
-      child: const SiwangjeonApp(),
+      child: SiwangjeonApp(home: RunScreen(artResolver: artResolver)),
     ),
   );
   await tester.pump();
@@ -1277,6 +1287,76 @@ void main() {
         } finally {
           await _disposeTree(tester);
         }
+      }
+    }
+  });
+  testWidgets('아트가 있어도 1080×2340 보상 후보 세 장을 한 화면에서 비교한다', (tester) async {
+    for (final textScale in [1.0, 1.3]) {
+      await _pumpReward(
+        tester,
+        device: _galaxyS25Ultra,
+        textScale: textScale,
+        artResolver: _virtualCardArt,
+      );
+
+      try {
+        final viewport = _layoutBounds(tester, find.byType(ListView));
+        for (final card in _rewardCards) {
+          final cardBounds = _layoutBounds(
+            tester,
+            find.byKey(ValueKey('reward-card-${card.id}')),
+          );
+          expect(find.byKey(ValueKey('card-art-${card.id}')), findsOneWidget);
+          expect(cardBounds.top, greaterThanOrEqualTo(viewport.top));
+          expect(cardBounds.bottom, lessThanOrEqualTo(viewport.bottom));
+        }
+        expect(tester.takeException(), isNull, reason: '글자 배율 $textScale');
+      } finally {
+        await _disposeTree(tester);
+      }
+    }
+  });
+
+  testWidgets('아트가 있어도 1080×2340 상점 후보 세 장을 한 화면에서 비교한다', (tester) async {
+    final shopSeed = _seedForFirstNode(RunNodeType.shop);
+    for (final textScale in [1.0, 1.3]) {
+      await _pumpRun(
+        tester,
+        seed: shopSeed,
+        device: _galaxyS25Ultra,
+        textScale: textScale,
+        artResolver: _virtualCardArt,
+        content: _nonCombatContent(startingMoney: 100),
+        initialState: _enteredFirstNode(shopSeed),
+      );
+
+      try {
+        final cards = _containerFor(
+          tester,
+        ).read(runControllerProvider).progress.pendingShop!.cards;
+        final viewport = _layoutBounds(
+          tester,
+          find.byKey(const ValueKey('shop-card-list')),
+        );
+        expect(cards, hasLength(3));
+        for (final card in cards) {
+          final cardBounds = _layoutBounds(
+            tester,
+            find.byKey(ValueKey('shop-card-${card.id}')),
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(ValueKey('shop-card-${card.id}')),
+              matching: find.byKey(ValueKey('card-art-${card.id}')),
+            ),
+            findsOneWidget,
+          );
+          expect(cardBounds.top, greaterThanOrEqualTo(viewport.top));
+          expect(cardBounds.bottom, lessThanOrEqualTo(viewport.bottom));
+        }
+        expect(tester.takeException(), isNull, reason: '글자 배율 $textScale');
+      } finally {
+        await _disposeTree(tester);
       }
     }
   });
