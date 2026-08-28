@@ -204,6 +204,13 @@ void main() {
           find.byKey(ValueKey('card-type-stripe-${card.id}')),
           findsOneWidget,
         );
+        expect(
+          tester
+              .getSize(find.byKey(ValueKey('card-type-stripe-${card.id}')))
+              .width,
+          8,
+          reason: '유형색은 빈 열이 아니라 카드를 훑는 장식선으로만 남긴다.',
+        );
         expect(tester.takeException(), isNull);
       }
     }
@@ -231,9 +238,16 @@ void main() {
     final artHeight = tester
         .getSize(find.byKey(const ValueKey('card-frame-frame_attack')))
         .height;
+    final artSlotHeight = tester
+        .getSize(find.byKey(const ValueKey('card-art-frame_attack')))
+        .height;
     expect(art.aspectRatio, cardArtAspectRatio);
     expect(artHeight - artlessHeight, greaterThan(100));
-    expect(artHeight / 248, closeTo(4.4 / 3, 0.12));
+    expect(
+      artHeight - artlessHeight,
+      closeTo(artSlotHeight - 46, 0.1),
+      reason: '아트가 없는 식별 영역만 실제 아트 슬롯으로 대체한다.',
+    );
     expect(tester.takeException(), isNull);
   });
 }
