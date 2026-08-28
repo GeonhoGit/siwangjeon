@@ -65,5 +65,6 @@ art-pipeline/dataset/raw/
 art-pipeline/raw/
 art-pipeline/sheets/
 
-# ── 대용량 (실행가이드 §11.2 — Release 첨부 + 외장 백업으로 관리) ──
+# ── SDXL 파생물 LoRA: 공개 Distribution 전 §4 의무가 생기므로 Git 이력에 넣지 않는다.
+#    외장 백업과 private Release로만 보관한다 (실행가이드 §11.2, MODEL.md).
 art-pipeline/lora/*.safetensors
