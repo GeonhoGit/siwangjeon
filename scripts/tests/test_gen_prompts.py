@@ -170,6 +170,58 @@ class PromptValidationCliTest(unittest.TestCase):
         ):
             self.assertIn(card_id, result.stderr)
 
+    def test_validate_blocks_western_fantasy_and_stock_phrases(self) -> None:
+        """서양 갑주와 반복 관용구를 규칙 파일만으로 대상 묘사에서 막아야 한다."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            prompts_path, template_path, negative_path = self._write_inputs(
+                Path(temporary_directory),
+                [
+                    {
+                        "id": "card_armored",
+                        "subject": "armored warrior, raised spear",
+                        "prompt": "swjdostyle, armored warrior, raised spear, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_knight",
+                        "subject": "knight, iron shield",
+                        "prompt": "swjdostyle, knight, iron shield, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_plate_armor",
+                        "subject": "plate armor, lowered lance",
+                        "prompt": "swjdostyle, plate armor, lowered lance, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_breastplate",
+                        "subject": "iron breastplate, black gat",
+                        "prompt": "swjdostyle, iron breastplate, black gat, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_stock_defense",
+                        "subject": "shield, defensive stance",
+                        "prompt": "swjdostyle, shield, defensive stance, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_stock_attack",
+                        "subject": "bronze blade, downward slash",
+                        "prompt": "swjdostyle, bronze blade, downward slash, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                ],
+            )
+
+            result = self._validate(prompts_path, template_path, negative_path)
+
+        self.assertNotEqual(result.returncode, 0)
+        for card_id in (
+            "card_armored",
+            "card_knight",
+            "card_plate_armor",
+            "card_breastplate",
+            "card_stock_defense",
+            "card_stock_attack",
+        ):
+            self.assertIn(card_id, result.stderr)
+
 
 class CardContextTest(unittest.TestCase):
     def test_context_derives_effects_and_reports_missing_description_field(self) -> None:
@@ -481,7 +533,7 @@ class OpenAiCompatibleGenerationTest(unittest.TestCase):
         self.assertIsNone(document["generation"]["seed"])
 
     def test_generate_retries_a_negative_prompt_conflict_once(self) -> None:
-        """방어 카드가 armor를 자연스럽게 고르면 실제 충돌 단어를 줘야 결과 검증까지 통과한다."""
+        """방어 카드가 갑주 표현을 고르면 저승의 구체 사물로 한 번 보정해야 한다."""
         module = self._load_module()
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
@@ -498,7 +550,7 @@ class OpenAiCompatibleGenerationTest(unittest.TestCase):
             chat_responses = iter(
                 [
                     {"output": [{"type": "message", "content": "iron armor, armored guard, stance"}]},
-                    {"output": [{"type": "message", "content": "iron shield, plated guard, defensive stance"}]},
+                    {"output": [{"type": "message", "content": "jade talisman, lacquered gate, court seal"}]},
                 ]
             )
 
@@ -537,7 +589,9 @@ class OpenAiCompatibleGenerationTest(unittest.TestCase):
         self.assertEqual(len(chat_requests), 2)
         correction = json.loads(chat_requests[1].data)["input"]
         self.assertIn("armor", correction)
-        self.assertEqual(document["cards"][0]["subject"], "iron shield, plated guard, defensive stance")
+        self.assertIn("exactly three comma-separated English noun phrases", correction)
+        self.assertIn("at most 12 English words", correction)
+        self.assertEqual(document["cards"][0]["subject"], "jade talisman, lacquered gate, court seal")
 
 
 if __name__ == "__main__":

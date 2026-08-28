@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "model": "qwen/qwen3.5-9b",
+  "generation": {
+    "base_url": "http://localhost:1234/v1",
+    "model": "qwen/qwen3.5-9b",
+    "temperature": 0.0,
+    "seed": null
+  },
+  "template": "art-pipeline\\prompts\\template.txt",
+  "negative_prompt": "art-pipeline\\prompts\\negative.txt",
+  "cards": [
+    {
+      "id": "card_strike",
+      "subject": "heavy iron mallet, crimson robe, upward swing",
+      "prompt": "swjdostyle, heavy iron mallet, crimson robe, upward swing, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_blade_of_grudge",
+      "subject": "crimson grudge blade, iron chain of karma, severed soul thread",
+      "prompt": "swjdostyle, crimson grudge blade, iron chain of karma, severed soul thread, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_sinful_slash",
+      "subject": "bloodied iron blade, crimson sin mark, upward strike",
+      "prompt": "swjdostyle, bloodied iron blade, crimson sin mark, upward strike, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_venom_verdict",
+      "subject": "poisoned snake, venomous fangs, judgment tablet",
+      "prompt": "swjdostyle, poisoned snake, venomous fangs, judgment tablet, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_inquisition_brand",
+      "subject": "inked interrogation seal, burning karmic brand, trembling accused soul",
+      "prompt": "swjdostyle, inked interrogation seal, burning karmic brand, trembling accused soul, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_twin_verdict",
+      "subject": "dual ink seals, split judgment gavel, chained karma ledger",
+      "prompt": "swjdostyle, dual ink seals, split judgment gavel, chained karma ledger, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_suppressing_cut",
+      "subject": "wooden execution blade, severed soul thread, upward chop",
+      "prompt": "swjdostyle, wooden execution blade, severed soul thread, upward chop, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_clean_cut",
+      "subject": "clean silver blade, sharp upward strike, severed sin thread",
+      "prompt": "swjdostyle, clean silver blade, sharp upward strike, severed sin thread, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_defend",
+      "subject": "black gat, iron amulet, lotus barrier",
+      "prompt": "swjdostyle, black gat, iron amulet, lotus barrier, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_iron_guard",
+      "subject": "iron gat, iron amulet, sealed barrier",
+      "prompt": "swjdostyle, iron gat, iron amulet, sealed barrier, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_steady_breath",
+      "subject": "calm chest, lotus cushion, jade amulet",
+      "prompt": "swjdostyle, calm chest, lotus cushion, jade amulet, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_recovered_energy",
+      "subject": "recovered stamina, protective talisman, glowing lotus",
+      "prompt": "swjdostyle, recovered stamina, protective talisman, glowing lotus, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_guardian_sigil",
+      "subject": "inked guardian sigil, black gat, raised ink brush",
+      "prompt": "swjdostyle, inked guardian sigil, black gat, raised ink brush, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_greedy_barrier",
+      "subject": "golden seal amulet, black gat, ink-stained barrier",
+      "prompt": "swjdostyle, golden seal amulet, black gat, ink-stained barrier, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_weakening_glance",
+      "subject": "faded ink seal, withered lotus petals, trembling reed staff",
+      "prompt": "swjdostyle, faded ink seal, withered lotus petals, trembling reed staff, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_hellfire_momentum",
+      "subject": "hellfire momentum, iron gat seal, lotus warding",
+      "prompt": "swjdostyle, hellfire momentum, iron gat seal, lotus warding, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_iron_vow",
+      "subject": "iron vow amulet, black gat, raised ink brush",
+      "prompt": "swjdostyle, iron vow amulet, black gat, raised ink brush, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_clinging_oath",
+      "subject": "tattered hanbok, ink-stained talisman, bound oath",
+      "prompt": "swjdostyle, tattered hanbok, ink-stained talisman, bound oath, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_confession",
+      "subject": "suffering mortal, black gat, lotus amulet",
+      "prompt": "swjdostyle, suffering mortal, black gat, lotus amulet, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_great_purification",
+      "subject": "white lotus barrier, black gat seal, incense burner",
+      "prompt": "swjdostyle, white lotus barrier, black gat seal, incense burner, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_fasting_vow",
+      "subject": "withered skin, empty bowl, lotus vow tablet",
+      "prompt": "swjdostyle, withered skin, empty bowl, lotus vow tablet, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_thin_veil",
+      "subject": "translucent silk veil, faint ghostly mist, lowered karma tally",
+      "prompt": "swjdostyle, translucent silk veil, faint ghostly mist, lowered karma tally, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    },
+    {
+      "id": "card_shattered_ward",
+      "subject": "cracked ward seal, shattered karma tablet, broken lotus barrier",
+      "prompt": "swjdostyle, cracked ward seal, shattered karma tablet, broken lotus barrier, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture"
+    }
+  ]
+}

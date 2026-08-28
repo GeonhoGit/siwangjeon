@@ -471,12 +471,18 @@ def _generated_subject_issues(
     return issues
 
 
-def _corrected_card_context(card_context: str, subject: str, issues: Sequence[str]) -> str:
+def _corrected_card_context(
+    card_context: str,
+    subject: str,
+    issues: Sequence[str],
+    max_subject_words: int,
+) -> str:
     return (
         f"{card_context}\n\n"
         f"Your previous output was: {subject}\n"
         f"It failed these machine rules: {'; '.join(issues)}\n"
-        "Return a replacement with different concrete nouns. Output only comma-separated English noun phrases."
+        "Return exactly three comma-separated English noun phrases with one to three English words each, "
+        f"at most {max_subject_words} English words total, and no explanation."
     )
 
 
@@ -589,7 +595,12 @@ def generate_prompts(arguments: argparse.Namespace) -> int:
             if not subject_issues:
                 break
             if attempt + 1 < MAX_SUBJECT_ATTEMPTS:
-                card_context = _corrected_card_context(card_context, subject, subject_issues)
+                card_context = _corrected_card_context(
+                    card_context,
+                    subject,
+                    subject_issues,
+                    rules["max_subject_words"],
+                )
         else:
             raise PipelineInputError(f"카드 {card_id}: 대상 묘사 형식이 잘못되었습니다: {subject_issues[0]}")
         records.append(
