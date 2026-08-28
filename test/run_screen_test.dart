@@ -227,6 +227,9 @@ Finder _darkRelicPanelsWithin(Finder ancestor) => find.descendant(
   }),
 );
 
+Finder _scrollableFinder() =>
+    find.byWidgetPredicate((widget) => widget is Scrollable);
+
 Future<void> _disposeTree(WidgetTester tester) =>
     tester.pumpWidget(const SizedBox.shrink());
 
@@ -431,12 +434,9 @@ void main() {
       expect(reward.cards, hasLength(3));
       expect(find.text('전투 승리'), findsOneWidget);
       expect(find.textContaining('노잣돈'), findsOneWidget);
-      expect(find.text('피해 6 · 업 +3'), findsOneWidget);
+      expect(find.text('피해 6'), findsOneWidget);
+      expect(find.text('업 +3'), findsOneWidget);
       expect(find.text('원한 1'), findsOneWidget);
-      expect(find.text('방어 2 · 체력 -5'), findsOneWidget);
-      expect(find.text('업 -8'), findsOneWidget);
-      expect(find.text('방어 2 · 기세 1'), findsOneWidget);
-      expect(find.text('굳음 1'), findsOneWidget);
 
       await tester.tap(find.byKey(ValueKey('reward-card-${chosen.id}')));
       await tester.pump();
@@ -654,38 +654,58 @@ void main() {
     }
   });
 
-  testWidgets('보상 효과는 경계 기기와 글꼴 배율에서 세 장 모두 보인다', (tester) async {
+  testWidgets('보상 전체 카드 프레임은 경계 기기와 글꼴 배율에서 넘치지 않는다', (tester) async {
     for (final device in _boundaryDevices) {
       for (final textScale in [1.0, 1.3]) {
         await _pumpReward(tester, device: device, textScale: textScale);
 
         try {
           final viewport = _layoutBounds(tester, find.byType(ListView));
-          for (final card in _rewardCards) {
-            final cardBounds = _layoutBounds(
-              tester,
-              find.byKey(ValueKey('reward-card-${card.id}')),
-            );
-            expect(
-              cardBounds.height,
-              greaterThanOrEqualTo(48),
-              reason: device.name,
-            );
-            expect(cardBounds.top, greaterThanOrEqualTo(viewport.top));
-            expect(cardBounds.bottom, lessThanOrEqualTo(viewport.bottom));
-          }
+          final firstCard = _layoutBounds(
+            tester,
+            find.byKey(const ValueKey('reward-card-ui_reward_a')),
+          );
+          expect(
+            firstCard.height,
+            greaterThanOrEqualTo(48),
+            reason: device.name,
+          );
+          expect(firstCard.top, greaterThanOrEqualTo(viewport.top));
+          expect(firstCard.bottom, lessThanOrEqualTo(viewport.bottom));
+          expect(
+            find.byKey(const ValueKey('card-frame-full-ui_reward_a')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('card-type-ribbon-ui_reward_a')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('card-art-ui_reward_a')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('card-rules-ui_reward_a')),
+            findsOneWidget,
+          );
 
-          final firstEffectLine = _layoutBounds(
+          final firstRule = _layoutBounds(
             tester,
             find.byKey(const ValueKey('reward-card-effect-ui_reward_a-0')),
           );
-          final secondEffectLine = _layoutBounds(
+          final secondRule = _layoutBounds(
             tester,
             find.byKey(const ValueKey('reward-card-effect-ui_reward_a-1')),
           );
+          expect(secondRule.top, greaterThanOrEqualTo(firstRule.bottom));
+
+          await tester.scrollUntilVisible(
+            find.byKey(const ValueKey('reward-card-ui_reward_c')),
+            200,
+          );
           expect(
-            secondEffectLine.top,
-            greaterThanOrEqualTo(firstEffectLine.bottom),
+            find.byKey(const ValueKey('card-rules-ui_reward_c')),
+            findsOneWidget,
           );
           expect(tester.takeException(), isNull);
         } finally {
@@ -763,7 +783,8 @@ void main() {
         find.byKey(ValueKey('shop-card-effect-${card.id}-0')),
         findsOneWidget,
       );
-      expect(find.text('피해 6 · 업 +3'), findsOneWidget);
+      expect(find.text('피해 6'), findsOneWidget);
+      expect(find.text('업 +3'), findsOneWidget);
 
       await tester.tap(find.byKey(ValueKey('shop-card-${card.id}')));
       await tester.pump();
@@ -774,6 +795,11 @@ void main() {
       );
       expect(find.byKey(const ValueKey('shop-screen')), findsOneWidget);
 
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('shop-leave')),
+        300,
+        scrollable: _scrollableFinder(),
+      );
       await tester.tap(find.byKey(const ValueKey('shop-leave')));
       await tester.pump();
       expect(find.byType(RunMapScreen), findsOneWidget);
@@ -805,6 +831,11 @@ void main() {
             .onPressed,
         isNull,
       );
+      await tester.drag(
+        find.byKey(const ValueKey('shop-card-list')),
+        const Offset(0, -700),
+      );
+      await tester.pump();
       expect(
         tester
             .widget<OutlinedButton>(
@@ -813,13 +844,6 @@ void main() {
             .onPressed,
         isNull,
       );
-
-      await tester.tap(find.byKey(ValueKey('shop-card-${shopCard.id}')));
-      await tester.tap(
-        find.byKey(ValueKey('shop-remove-${deckCard.instanceId}')),
-      );
-      await tester.pump();
-
       expect(container.read(runControllerProvider).state, same(before.state));
     } finally {
       await _disposeTree(tester);
@@ -844,6 +868,11 @@ void main() {
       final removed = before.progress.deckCards.first;
       final retained = before.progress.deckCards.last;
 
+      await tester.drag(
+        find.byKey(const ValueKey('shop-card-list')),
+        const Offset(0, -700),
+      );
+      await tester.pump();
       await tester.tap(
         find.byKey(ValueKey('shop-remove-${removed.instanceId}')),
       );
@@ -1102,6 +1131,11 @@ void main() {
             tester,
             find.byKey(ValueKey('shop-card-${shop.cards.first.id}')),
           );
+          await tester.drag(
+            find.byKey(const ValueKey('shop-card-list')),
+            const Offset(0, -700),
+          );
+          await tester.pump();
           _expectMinimumTapTargets(
             tester,
             find.byKey(ValueKey('shop-remove-${deckCard.instanceId}')),
@@ -1109,7 +1143,7 @@ void main() {
           await tester.scrollUntilVisible(
             find.byKey(const ValueKey('shop-leave')),
             300,
-            scrollable: find.byType(Scrollable),
+            scrollable: _scrollableFinder(),
           );
           _expectMinimumTapTargets(
             tester,

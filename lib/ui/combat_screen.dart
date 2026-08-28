@@ -27,11 +27,11 @@ import '../domain/model/combat_state.dart';
 import '../domain/model/enemy.dart';
 import '../domain/model/game_event.dart';
 import '../domain/model/status.dart';
+import 'card_frame.dart';
 import 'labels.dart';
 import 'relic_inventory.dart';
 
 const _attackColor = Color(0xFFB2332B);
-const _skillColor = Color(0xFF2E6B6B);
 const _karmaColor = Color(0xFFC9A227);
 const _cardMinimumHeight = 132.0;
 const _cardSecondEffectLineAllowance = 12.0;
@@ -1234,93 +1234,21 @@ class _CardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = switch (card.type) {
-      CardType.attack => _attackColor,
-      CardType.skill => _skillColor,
-      _ => Colors.grey,
-    };
-
     // 피해·방어는 엔진이 준 것만 쓰고, 나머지는 카드 정의의 고정 효과만 읽는다.
     // 화면에서 상태 규칙을 다시 계산하면 카드에 적힌 값과 실제 결과가 갈라진다.
     final damage = previewDamage(state, card);
     final block = previewBlock(state, card);
     final effects = cardEffectLabels(card, damage: damage, block: block);
-    final effectLines = [
-      effects.take(2).join(' · '),
-      if (effects.length > 2) effects.skip(2).join(' · '),
-    ];
     final textScaler = MediaQuery.textScalerOf(context);
-    final costDiameter = textScaler.scale(20);
-
-    return Opacity(
-      opacity: playable ? 1 : 0.45,
-      child: Container(
-        width: width,
-        constraints: BoxConstraints(
-          // 큰 글꼴의 두 번째 효과 줄도 첫 Flow 측정부터 예약한다. 이 값은
-          // 최소 높이일 뿐 상한이 아니므로 내용이 더 길면 카드가 계속 커진다.
-          minHeight: _cardReservedMinimumHeight(textScaler, effects.length),
-        ),
-        decoration: BoxDecoration(
-          color: const Color(0xFF241C20),
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(
-            color: selected ? Colors.white : accent.withValues(alpha: 0.75),
-            width: selected ? 2.5 : 1.5,
-          ),
-        ),
-        padding: const EdgeInsets.all(6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              alignment: WrapAlignment.spaceBetween,
-              children: [
-                Container(
-                  key: ValueKey('card-cost-${card.id}'),
-                  width: costDiameter,
-                  height: costDiameter,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE0C060),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '${card.cost}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Text(
-              key: ValueKey('card-name-${card.id}'),
-              card.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            for (var index = 0; index < effectLines.length; index++)
-              Text(
-                key: ValueKey('card-effect-line-$index'),
-                effectLines[index],
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: accent.withValues(alpha: 0.9),
-                ),
-              ),
-          ],
-        ),
-      ),
+    return CardFrame(
+      card: card,
+      effectLabels: effects,
+      width: width,
+      // 큰 글꼴의 두 번째 효과 줄도 첫 Flow 측정부터 예약한다. 이 값은
+      // 최소 높이일 뿐 상한이 아니므로 내용이 더 길면 카드가 계속 커진다.
+      minimumHeight: _cardReservedMinimumHeight(textScaler, effects.length),
+      selected: selected,
+      dimmed: !playable,
     );
   }
 }
