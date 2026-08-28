@@ -20,6 +20,7 @@ import '../domain/run/run_map.dart';
 import '../domain/run/run_node_type.dart';
 import '../domain/run/run_tuning.dart';
 import '../domain/run/wild_camp_preview.dart';
+import 'card_frame.dart';
 import 'combat_screen.dart';
 import 'labels.dart';
 import 'relic_inventory.dart';
@@ -586,35 +587,20 @@ class _RewardCardButton extends StatelessWidget {
       damage: previewBaseDamage(card),
       block: previewBaseBlock(card),
     );
-    final effectLines = [
-      effects.take(2).join(' · '),
-      if (effects.length > 2) effects.skip(2).join(' · '),
-    ];
-
     return FilledButton(
       key: ValueKey('reward-card-${card.id}'),
       onPressed: onChoose,
       style: FilledButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        minimumSize: const Size.fromHeight(72),
-        padding: const EdgeInsets.all(16),
+        backgroundColor: Colors.transparent,
+        disabledBackgroundColor: Colors.transparent,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        minimumSize: const Size.fromHeight(48),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(card.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text('${_cardTypeName(card.type)} · 비용 ${card.cost}'),
-          if (effectLines.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            for (var index = 0; index < effectLines.length; index++)
-              Text(
-                key: ValueKey('reward-card-effect-${card.id}-$index'),
-                effectLines[index],
-              ),
-          ],
-        ],
+      child: _LargeCardFrame(
+        card: card,
+        effectLabels: effects,
+        effectKeyPrefix: 'reward-card-effect-${card.id}',
       ),
     );
   }
@@ -645,6 +631,7 @@ class _ShopScreen extends StatelessWidget {
       title: '저승 상점',
       status: '노잣돈 ${progress.money}',
       child: ListView(
+        key: const ValueKey('shop-card-list'),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           const Text('상품을 고르세요'),
@@ -712,32 +699,28 @@ class _ShopCardButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectLines = _cardEffectLines(card);
+    final effects = _baseCardEffectLabels(card);
     return FilledButton(
       key: ValueKey('shop-card-${card.id}'),
       onPressed: onPurchase,
       style: FilledButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        minimumSize: const Size.fromHeight(72),
-        padding: const EdgeInsets.all(16),
+        backgroundColor: Colors.transparent,
+        disabledBackgroundColor: Colors.transparent,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        minimumSize: const Size.fromHeight(48),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(card.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text('${_cardTypeName(card.type)} · 비용 ${card.cost}'),
-          const SizedBox(height: 8),
-          for (var index = 0; index < effectLines.length; index++)
-            Text(
-              key: ValueKey('shop-card-effect-${card.id}-$index'),
-              effectLines[index],
-            ),
-          const SizedBox(height: 8),
-          Text('구매 $price 노잣돈'),
-          if (onPurchase == null) const Text('구매할 수 없음'),
-        ],
+      child: _LargeCardFrame(
+        card: card,
+        effectLabels: effects,
+        effectKeyPrefix: 'shop-card-effect-${card.id}',
+        footer: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('구매 $price 노잣돈'),
+            if (onPurchase == null) const Text('구매할 수 없음'),
+          ],
+        ),
       ),
     );
   }
@@ -756,27 +739,26 @@ class _ShopRemoveCardButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effects = _baseCardEffectLabels(deckCard.card);
     return OutlinedButton(
       key: ValueKey('shop-remove-${deckCard.instanceId}'),
       onPressed: onRemove,
       style: OutlinedButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        minimumSize: const Size.fromHeight(56),
-        padding: const EdgeInsets.all(16),
+        foregroundColor: Colors.transparent,
+        side: BorderSide.none,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        minimumSize: const Size.fromHeight(48),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${deckCard.card.name} · 덱 $deckPosition번',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          Text(
-            '${_cardTypeName(deckCard.card.type)} · 비용 ${deckCard.card.cost}',
-          ),
-          if (onRemove == null) const Text('제거할 수 없음'),
-        ],
+      child: _LargeCardFrame(
+        card: deckCard.card,
+        effectLabels: effects,
+        footer: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('덱 $deckPosition번'),
+            if (onRemove == null) const Text('제거할 수 없음'),
+          ],
+        ),
       ),
     );
   }
@@ -880,28 +862,20 @@ class _WildCampEnhanceCardButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectLines = _cardEffectLines(deckCard.card);
+    final effects = _baseCardEffectLabels(deckCard.card);
     return OutlinedButton(
       key: ValueKey('wild-camp-enhance-${deckCard.instanceId}'),
       onPressed: () => onChoose(action),
       style: OutlinedButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        minimumSize: const Size.fromHeight(56),
-        padding: const EdgeInsets.all(16),
+        foregroundColor: Colors.transparent,
+        side: BorderSide.none,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        minimumSize: const Size.fromHeight(48),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            deckCard.card.name,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          Text(
-            '${_cardTypeName(deckCard.card.type)} · 비용 ${deckCard.card.cost}',
-          ),
-          for (final line in effectLines) Text(line),
-        ],
+      child: _LargeCardFrame(
+        card: deckCard.card,
+        effectLabels: effects,
+        footer: const Text('강화할 카드'),
       ),
     );
   }
@@ -1085,14 +1059,50 @@ class _NodeChoiceScaffold extends StatelessWidget {
   }
 }
 
-List<String> _cardEffectLines(CardDef card) {
+class _LargeCardFrame extends StatelessWidget {
+  const _LargeCardFrame({
+    required this.card,
+    required this.effectLabels,
+    this.effectKeyPrefix,
+    this.footer,
+  });
+
+  final CardDef card;
+  final List<String> effectLabels;
+  final String? effectKeyPrefix;
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    // 248dp는 96dp 손패와 구별되는 전체 프레임을 읽을 수 있으면서, 가장 좁은
+    // 지원 기기에서도 가로 여백을 남기는 폭이다. 바깥 버튼은 투명해서 프레임
+    // 표면을 한 번만 그린다.
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 248),
+        child: CardFrame(
+          card: card,
+          effectLabels: effectLabels,
+          effectKeyPrefix: effectKeyPrefix,
+          footer: footer,
+        ),
+      ),
+    );
+  }
+}
+
+List<String> _baseCardEffectLabels(CardDef card) {
   // 상점은 보상과 마찬가지로 진행 중인 전투 상태가 없다. 그래서 엔진이 정한
   // 상태·업 보정 전 기본 수치만 쓰고, UI에서 피해·방어 규칙을 다시 계산하지 않는다.
-  final effects = cardEffectLabels(
+  return cardEffectLabels(
     card,
     damage: previewBaseDamage(card),
     block: previewBaseBlock(card),
   );
+}
+
+List<String> _cardEffectLines(CardDef card) {
+  final effects = _baseCardEffectLabels(card);
   return [
     effects.take(2).join(' · '),
     if (effects.length > 2) effects.skip(2).join(' · '),
@@ -1208,12 +1218,4 @@ Color _nodeColor(RunNodeType type) => switch (type) {
   RunNodeType.wildCamp => const Color(0xFF496741),
   RunNodeType.event => const Color(0xFF5B4F79),
   RunNodeType.boss => const Color(0xFF6B253A),
-};
-
-String _cardTypeName(CardType type) => switch (type) {
-  CardType.attack => '공격',
-  CardType.skill => '기술',
-  CardType.power => '지속',
-  CardType.curse => '저주',
-  CardType.status => '상태',
 };
