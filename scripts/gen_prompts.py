@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib import error as urlerror
+from urllib import request as urlrequest
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -20,14 +21,21 @@ DEFAULT_SYSTEM_PROMPT_PATH = ART_PIPELINE_ROOT / "prompts" / "system_prompt.md"
 DEFAULT_RULES_PATH = ART_PIPELINE_ROOT / "prompts" / "validation_rules.json"
 DEFAULT_OUTPUT_PATH = ART_PIPELINE_ROOT / "prompts" / "cards_prompts.json"
 
-# 기획서 §9.3의 RTX 5080 16GB 기준은 8B~14B 양자화 모델이다. qwen3:8b는 그 범위의
-# 하한이라 다른 아트 도구와 VRAM을 공유해도 시작 가능하다. 이는 MODEL.md의 채택 결정이
-# 아니라 --model로 바꿀 수 있는 실행 기본값이다.
-DEFAULT_MODEL = "qwen3:8b"
+# 기획서 §9.3의 RTX 5080 16GB 기준은 8B~14B 양자화 모델이다. 이 값은 그 범위의
+# 로컬 실행 기본값일 뿐이며, MODEL.md의 채택 결정이나 라이선스 판단이 아니다.
+DEFAULT_BASE_URL = "http://localhost:1234/v1"
+DEFAULT_MODEL = "qwen/qwen3.5-9b"
+DEFAULT_TEMPERATURE = 0.0
+DEFAULT_SEED = 0
+REQUEST_TIMEOUT_SECONDS = 60
 
 
 class PipelineInputError(ValueError):
     """사용자가 고쳐야 하는 파일·도구 입력 문제를 나타낸다."""
+
+
+class LlmResponseError(PipelineInputError):
+    """OpenAI 호환 서버가 기대한 JSON 응답을 반환하지 않았음을 나타낸다."""
 
 
 def read_text(path: Path) -> str:
@@ -286,28 +294,105 @@ def validate_file(input_path: Path, template_path: Path, negative_path: Path, ru
     return report_validation(issues, len(cards))
 
 
-def request_subject(model: str, system_prompt: str, card_context: str) -> str:
-    instruction = f"{system_prompt}\n\n{card_context}"
+def _endpoint_url(base_url: str, path: str) -> str:
+    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _connection_error(base_url: str) -> PipelineInputError:
+    return PipelineInputError(
+        f"OpenAI 호환 서버에 연결할 수 없습니다: {base_url}. "
+        "LM Studio를 사용한다면 `lms server start`로 로컬 서버를 시작한 뒤 다시 실행하세요."
+    )
+
+
+def _read_json_response(request: urlrequest.Request, base_url: str) -> Any:
     try:
-        completed = subprocess.run(
-            ["ollama", "run", model, instruction],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-        )
-    except FileNotFoundError as error:
+        with urlrequest.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            payload = response.read()
+    except urlerror.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace").strip() or error.reason
         raise PipelineInputError(
-            "Ollama를 찾을 수 없습니다. 생성에는 Ollama를 설치하거나, 기존 파일 검증에는 "
-            "validate 명령을 사용하세요."
+            f"OpenAI 호환 서버 요청이 실패했습니다 ({error.code}, {request.full_url}): {detail}"
         ) from error
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or "출력 없음"
-        raise PipelineInputError(f"Ollama 생성이 실패했습니다 ({model}): {detail}")
-    lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
-    if not lines:
-        raise PipelineInputError(f"Ollama가 카드 대상 묘사를 반환하지 않았습니다 ({model}).")
-    return lines[-1]
+    except urlerror.URLError as error:
+        raise _connection_error(base_url) from error
+    except TimeoutError as error:
+        raise _connection_error(base_url) from error
+
+    try:
+        return json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise LlmResponseError(f"서버 응답이 JSON 형식이 아닙니다: {request.full_url}") from error
+
+
+def list_available_models(base_url: str) -> list[str]:
+    endpoint = _endpoint_url(base_url, "models")
+    response = _read_json_response(
+        urlrequest.Request(endpoint, headers={"Accept": "application/json"}, method="GET"),
+        base_url,
+    )
+    if not isinstance(response, Mapping) or not isinstance(response.get("data"), list):
+        raise LlmResponseError(f"모델 목록 응답 형식이 잘못되었습니다: {endpoint}")
+
+    model_ids = [
+        model["id"]
+        for model in response["data"]
+        if isinstance(model, Mapping) and isinstance(model.get("id"), str) and model["id"]
+    ]
+    if not model_ids:
+        raise LlmResponseError(f"사용 가능한 모델을 찾을 수 없습니다: {endpoint}")
+    return model_ids
+
+
+def require_available_model(base_url: str, model: str) -> None:
+    available_models = list_available_models(base_url)
+    if model not in available_models:
+        raise PipelineInputError(
+            f"요청한 모델이 서버에 없습니다: {model}. "
+            f"사용 가능한 모델: {', '.join(available_models)}"
+        )
+
+
+def request_subject(
+    base_url: str,
+    model: str,
+    system_prompt: str,
+    card_context: str,
+    card_id: str,
+    temperature: float,
+    seed: int,
+) -> str:
+    endpoint = _endpoint_url(base_url, "chat/completions")
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": card_context},
+        ],
+        "temperature": temperature,
+        "seed": seed,
+    }
+    request = urlrequest.Request(
+        endpoint,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        response = _read_json_response(request, base_url)
+    except LlmResponseError as error:
+        raise PipelineInputError(f"카드 {card_id}: {error}") from error
+    try:
+        choices = response["choices"]
+        message = choices[0]["message"]
+        subject = message["content"]
+    except (KeyError, IndexError, TypeError) as error:
+        raise PipelineInputError(
+            f"카드 {card_id}: OpenAI 호환 chat completions 응답 형식이 잘못되었습니다."
+        ) from error
+    if not isinstance(subject, str) or not subject.strip():
+        raise PipelineInputError(f"카드 {card_id}: 대상 묘사 응답이 비어 있습니다.")
+    return subject.strip()
 
 
 def generate_prompts(arguments: argparse.Namespace) -> int:
@@ -327,13 +412,26 @@ def generate_prompts(arguments: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
+    require_available_model(arguments.base_url, arguments.model)
+
     records: list[dict[str, str]] = []
     for index, value in enumerate(cards, start=1):
         card = require_mapping(value, f"cards.json[{index}]")
         card_id = card.get("id")
         if not isinstance(card_id, str) or not card_id:
             raise PipelineInputError(f"cards.json[{index}]에 id 문자열이 없습니다.")
-        subject = request_subject(arguments.model, system_prompt, build_card_context(card))
+        subject = request_subject(
+            arguments.base_url,
+            arguments.model,
+            system_prompt,
+            build_card_context(card),
+            card_id,
+            arguments.temperature,
+            arguments.seed,
+        )
+        subject_issues = validate_subject(subject, rules)
+        if subject_issues:
+            raise PipelineInputError(f"카드 {card_id}: 대상 묘사 형식이 잘못되었습니다: {subject_issues[0]}")
         records.append(
             {
                 "id": card_id,
@@ -345,6 +443,12 @@ def generate_prompts(arguments: argparse.Namespace) -> int:
     document = {
         "schema_version": 1,
         "model": arguments.model,
+        "generation": {
+            "base_url": arguments.base_url,
+            "model": arguments.model,
+            "temperature": arguments.temperature,
+            "seed": arguments.seed,
+        },
         "template": str(arguments.template.relative_to(REPOSITORY_ROOT)),
         "negative_prompt": str(arguments.negative.relative_to(REPOSITORY_ROOT)),
         "cards": records,
@@ -362,7 +466,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="카드 아트 프롬프트 생성 및 검증")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    generate = commands.add_parser("generate", help="Ollama로 가변 대상 묘사를 생성하고 검증")
+    generate = commands.add_parser("generate", help="OpenAI 호환 서버로 가변 대상 묘사를 생성하고 검증")
     generate.add_argument("--cards", type=Path, default=DEFAULT_CARDS_PATH)
     generate.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE_PATH)
     generate.add_argument("--negative", type=Path, default=DEFAULT_NEGATIVE_PATH)
@@ -372,10 +476,27 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        help="Ollama 모델 태그 (기본값: qwen3:8b; §9.3의 8B~14B급 범위)",
+        help="서버 모델 ID (기본값: qwen/qwen3.5-9b; §9.3의 8B~14B급 범위)",
+    )
+    generate.add_argument(
+        "--base-url",
+        default=DEFAULT_BASE_URL,
+        help="OpenAI 호환 API 기본 URL (기본값: http://localhost:1234/v1)",
+    )
+    generate.add_argument(
+        "--temperature",
+        type=float,
+        default=DEFAULT_TEMPERATURE,
+        help="chat completions temperature (기본값: 0.0)",
+    )
+    generate.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_SEED,
+        help="chat completions seed (기본값: 0)",
     )
 
-    validate = commands.add_parser("validate", help="Ollama 없이 기존 프롬프트 파일만 검증")
+    validate = commands.add_parser("validate", help="LLM 서버 없이 기존 프롬프트 파일만 검증")
     validate.add_argument("--input", type=Path, default=DEFAULT_OUTPUT_PATH)
     validate.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE_PATH)
     validate.add_argument("--negative", type=Path, default=DEFAULT_NEGATIVE_PATH)

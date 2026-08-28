@@ -14,7 +14,7 @@
 ## 0. 전체 흐름
 
 ```
-[1] 환경 구축          ComfyUI + kohya_ss + Ollama          약 4시간
+[1] 환경 구축          ComfyUI + kohya_ss + OpenAI 호환 LLM 서버 약 4시간
       ↓
 [2] 데이터 수집        공공누리 제1유형 원본 40~60장          1일
       ↓
@@ -72,10 +72,20 @@ cd ../..
 git clone https://github.com/bmaltais/kohya_ss
 # 자체 설치 스크립트 사용
 
-# 4) Ollama — 로컬 LLM (프롬프트 대량 생성용)
-# https://ollama.com 에서 설치 후
-ollama pull qwen3:30b        # 24GB VRAM 기준. 12GB면 qwen3:8b 또는 gemma3:12b
+# 4) 로컬 LLM — OpenAI 호환 chat completions 서버 (프롬프트 대량 생성용)
+# 이 PC에는 LM Studio가 이미 설치되어 있고 Ollama는 설치되어 있지 않다.
+# LM Studio에서 모델을 올린 뒤 로컬 서버를 시작한다.
+lms server start
 ```
+
+`scripts/gen_prompts.py`는 `http://localhost:1234/v1`의 OpenAI 호환 API를 기본으로 쓴다.
+이 PC에 내려받은 8B~14B급 후보는 `qwen/qwen3.5-9b`와 `google/gemma-4-e4b`이며, 기본 모델
+ID는 전자다. 이는 실행 기본값일 뿐 채택이나 라이선스 판단이 아니다. 모델의 라이선스 원문은
+§1.3 및 `art-pipeline/MODEL.md` 절차대로 사람이 확인한다.
+
+Ollama도 대안으로 유지한다. 설치·모델 준비 후 서버를 시작하고
+`--base-url http://localhost:11434/v1 --model <서버가_보고한_모델_ID>`를 지정한다. llama.cpp나
+vLLM처럼 OpenAI 호환 chat completions를 제공하는 서버도 같은 인자로 쓸 수 있다.
 
 ComfyUI-Manager로 추가할 노드: 배경 제거(RMBG 계열), 얼굴 보정(FaceDetailer 계열).
 **노드 이름과 저장소는 시점에 따라 바뀌므로 Manager 검색으로 현재 이름을 확인해 설치한다.**
@@ -352,37 +362,26 @@ LoRA가 아무리 잘 나와도 이 세 개는 넣어 두는 게 안전하다.
 
 ### 6.2 로컬 LLM으로 220개 생성
 
-```python
-# scripts/gen_prompts.py
-import json, subprocess
+`scripts/gen_prompts.py`는 특정 런처 CLI를 부르지 않는다. `art-pipeline/prompts/system_prompt.md`를
+시스템 메시지로 읽어 OpenAI 호환 `GET /models`와 `POST /chat/completions`를 사용한다. 따라서
+LM Studio·Ollama·llama.cpp·vLLM 서버를 URL 하나로 바꿔 쓸 수 있다.
 
-TRIGGER = "swjdostyle"
-FIXED = ("centered composition, single subject, plain dark background, "
-         "deep vermilion, jade green, ink black, muted gold, "
-         "highly detailed, traditional pigment texture")
+```powershell
+# 이 PC의 기본 실행: LM Studio 서버를 켜고 기본 URL·모델 ID로 생성
+lms server start
+python scripts/gen_prompts.py generate --temperature 0 --seed 0
 
-SYSTEM = """너는 카드 게임 아트 프롬프트 작성기다.
-카드 이름과 효과를 받아 그림 대상만 영어로 묘사한다.
-규칙:
-- 12단어 이내, 쉼표로 구분된 명사구만
-- 화풍/시대/작가/품질 관련 단어 금지
-- 인물이면 자세와 복장, 사물이면 형태와 재질만
-- 설명 문장 금지, 프롬프트 조각만 출력"""
-
-cards = json.load(open("assets/data/cards.json", encoding="utf-8"))
-out = []
-for c in cards:
-    user = f"카드 이름: {c['name']}\n효과: {c.get('description','')}"
-    r = subprocess.run(
-        ["ollama", "run", "qwen3:30b", f"{SYSTEM}\n\n{user}"],
-        capture_output=True, text=True, encoding="utf-8")
-    subject = r.stdout.strip().split("\n")[-1]
-    out.append({"id": c["id"], "prompt": f"{TRIGGER}, {subject}, {FIXED}"})
-
-json.dump(out, open("prompts/cards_prompts.json", "w", encoding="utf-8"),
-          ensure_ascii=False, indent=2)
-print(f"{len(out)}개 생성 완료")
+# Ollama 또는 다른 OpenAI 호환 서버
+python scripts/gen_prompts.py generate --base-url http://localhost:11434/v1 --model <서버가_보고한_모델_ID> --temperature 0 --seed 0
 ```
+
+서버가 꺼져 있으면 스크립트는 0이 아닌 코드로 종료하며, LM Studio 기준으로 `lms server start`를
+안내한다. 요청한 모델이 없으면 서버의 사용 가능한 모델 ID 목록을 함께 출력한다. 비어 있거나
+깨진 응답은 해당 카드 ID와 함께 실패 처리하므로 빈 프롬프트를 저장하지 않는다.
+
+생성 결과 `cards_prompts.json`에는 서버 `base_url`, 실제 `model`, `temperature`, `seed`가 함께
+기록된다. 이 값과 카드·템플릿·시스템 프롬프트를 고정해야 6개월 뒤 같은 프롬프트를 재생성할
+근거가 남는다.
 
 **생성 후 반드시 눈으로 훑는다.** 220줄이면 15분이다.
 LLM이 가끔 설명 문장을 뱉거나 금지 단어를 넣는다. 이걸 걸러야 §8에서 재작업이 없다.

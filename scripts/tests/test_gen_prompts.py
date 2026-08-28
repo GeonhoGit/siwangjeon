@@ -1,10 +1,14 @@
+import contextlib
 import importlib.util
+import io
 import json
 import locale
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
+from urllib import error as urlerror
 from pathlib import Path
 
 
@@ -212,7 +216,168 @@ class GenerationDefaultsTest(unittest.TestCase):
 
         arguments = module.build_parser().parse_args(["generate"])
 
-        self.assertEqual(arguments.model, "qwen3:8b")
+        self.assertEqual(arguments.base_url, "http://localhost:1234/v1")
+        self.assertEqual(arguments.model, "qwen/qwen3.5-9b")
+        self.assertEqual(arguments.temperature, 0.0)
+        self.assertEqual(arguments.seed, 0)
+
+
+class OpenAiCompatibleGenerationTest(unittest.TestCase):
+    class _Response:
+        def __init__(self, document: object) -> None:
+            self._body = json.dumps(document, ensure_ascii=False).encode("utf-8")
+
+        def __enter__(self) -> "OpenAiCompatibleGenerationTest._Response":
+            return self
+
+        def __exit__(self, exception_type: object, exception: object, traceback: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return self._body
+
+    def _load_module(self) -> object:
+        spec = importlib.util.spec_from_file_location("gen_prompts", SCRIPT_PATH)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_request_subject_parses_response_and_sends_deterministic_parameters(self) -> None:
+        """서버별 SDK 차이로 seed가 빠지면 같은 입력의 재생성이 불가능해진다."""
+        module = self._load_module()
+        response = self._Response(
+            {"choices": [{"message": {"content": "bronze sword, crimson flame"}}]}
+        )
+        with mock.patch.object(module.urlrequest, "urlopen", return_value=response) as urlopen:
+            subject = module.request_subject(
+                "http://localhost:1234/v1/",
+                "qwen/qwen3.5-9b",
+                "system contract",
+                "card context",
+                "card_blade",
+                0.25,
+                31415,
+            )
+
+        self.assertEqual(subject, "bronze sword, crimson flame")
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "http://localhost:1234/v1/chat/completions")
+        self.assertEqual(
+            json.loads(request.data),
+            {
+                "model": "qwen/qwen3.5-9b",
+                "messages": [
+                    {"role": "system", "content": "system contract"},
+                    {"role": "user", "content": "card context"},
+                ],
+                "temperature": 0.25,
+                "seed": 31415,
+            },
+        )
+
+    def test_empty_chat_response_names_the_card(self) -> None:
+        """빈 응답을 템플릿에 넣으면 형식 검증 이전에 손상된 산출물이 생긴다."""
+        module = self._load_module()
+        response = self._Response({"choices": [{"message": {"content": "   "}}]})
+        with mock.patch.object(module.urlrequest, "urlopen", return_value=response):
+            with self.assertRaisesRegex(module.PipelineInputError, "카드 card_empty.*비어 있습니다"):
+                module.request_subject(
+                    "http://localhost:1234/v1",
+                    "qwen/qwen3.5-9b",
+                    "system contract",
+                    "card context",
+                    "card_empty",
+                    0.0,
+                    0,
+                )
+
+    def test_connection_refusal_explains_how_to_start_lm_studio(self) -> None:
+        """서버가 꺼진 기본 환경에서는 다음 행동을 알려야 무의미한 재시도가 없다."""
+        module = self._load_module()
+        with mock.patch.object(
+            module.urlrequest,
+            "urlopen",
+            side_effect=urlerror.URLError(ConnectionRefusedError("connection refused")),
+        ):
+            with self.assertRaisesRegex(module.PipelineInputError, "lms server start"):
+                module.list_available_models("http://localhost:1234/v1")
+
+    def test_missing_model_lists_the_models_reported_by_the_server(self) -> None:
+        """모델 이름 오타를 서버 실행 실패처럼 보이게 하면 환경 진단이 늦어진다."""
+        module = self._load_module()
+        response = self._Response({"data": [{"id": "model-a"}, {"id": "model-b"}]})
+        with mock.patch.object(module.urlrequest, "urlopen", return_value=response):
+            with self.assertRaisesRegex(module.PipelineInputError, "model-a, model-b"):
+                module.require_available_model("http://localhost:1234/v1", "missing-model")
+
+    def test_generate_records_the_actual_server_and_deterministic_parameters(self) -> None:
+        """결과물에 요청값이 없으면 나중에 같은 생성 조건을 복원할 수 없다."""
+        module = self._load_module()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            cards_path = directory / "cards.json"
+            output_path = directory / "cards_prompts.json"
+            cards_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": "card_blade",
+                            "name": "검",
+                            "effects": [{"op": "damage", "value": 4}],
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            requests: list[object] = []
+
+            def fake_urlopen(request: object, timeout: int) -> "OpenAiCompatibleGenerationTest._Response":
+                requests.append(request)
+                if request.get_method() == "GET":
+                    return self._Response({"data": [{"id": "test-model"}]})
+                return self._Response(
+                    {"choices": [{"message": {"content": "bronze sword, crimson flame"}}]}
+                )
+
+            with (
+                mock.patch.object(module.urlrequest, "urlopen", side_effect=fake_urlopen),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = module.main(
+                    [
+                        "generate",
+                        "--cards",
+                        str(cards_path),
+                        "--output",
+                        str(output_path),
+                        "--base-url",
+                        "http://example.test/v1",
+                        "--model",
+                        "test-model",
+                        "--temperature",
+                        "0.25",
+                        "--seed",
+                        "31415",
+                    ]
+                )
+
+            document = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            document["generation"],
+            {
+                "base_url": "http://example.test/v1",
+                "model": "test-model",
+                "temperature": 0.25,
+                "seed": 31415,
+            },
+        )
+        self.assertEqual(json.loads(requests[1].data)["seed"], document["generation"]["seed"])
 
 
 if __name__ == "__main__":
