@@ -31,9 +31,9 @@ REQUEST_TIMEOUT_SECONDS = 60
 # 대상 묘사는 계약상 12단어 이내라 256토큰이면 충분하다. 추론 모델은 이 상한 안에서
 # 사고 과정만 길게 쓰고 최종 답을 못 낼 수 있으므로, LM Studio가 지원하면 추론을 끈다.
 MAX_OUTPUT_TOKENS = 256
-# 공통 계약만으로는 카드 맥락에 따라 네거티브 단어가 섞일 수 있다. 실제 충돌 단어를 한 번
-# 되돌려 주되 무한 재시도로 생성 결과와 실행 시간을 불확실하게 만들지는 않는다.
-MAX_SUBJECT_ATTEMPTS = 2
+# 공통 계약만으로는 카드 맥락에 따라 네거티브 단어·다른 카드의 예약 명사구가 섞일 수 있다.
+# 하드 제약을 충분히 다시 고를 기회는 주되, 무한 재시도로 생성 결과와 실행 시간을 불확실하게 만들지는 않는다.
+MAX_SUBJECT_ATTEMPTS = 8
 
 
 class PipelineInputError(ValueError):
@@ -187,6 +187,10 @@ def _words(text: str) -> set[str]:
     return set(_word_tokens(text))
 
 
+def _noun_phrases(subject: str) -> set[str]:
+    return {" ".join(phrase.lower().split()) for phrase in subject.split(",") if phrase.strip()}
+
+
 def _contains_term(text: str, term: str) -> bool:
     pattern = rf"(?<![a-z0-9]){re.escape(term.lower())}(?![a-z0-9])"
     return re.search(pattern, text.lower()) is not None
@@ -196,7 +200,18 @@ def load_rules(path: Path) -> Mapping[str, Any]:
     rules = require_mapping(read_json(path), "검증 규칙")
     if not isinstance(rules.get("max_subject_words"), int):
         raise PipelineInputError("검증 규칙의 max_subject_words는 정수여야 합니다.")
-    for key in ("sentence_verbs", "banned_terms"):
+    if not isinstance(rules.get("max_noun_phrase_cards"), int) or rules["max_noun_phrase_cards"] < 1:
+        raise PipelineInputError("검증 규칙의 max_noun_phrase_cards는 1 이상의 정수여야 합니다.")
+    word_percentage = rules.get("max_word_card_percentage")
+    if (
+        not isinstance(word_percentage, (int, float))
+        or isinstance(word_percentage, bool)
+        or not 0 < word_percentage <= 100
+    ):
+        raise PipelineInputError("검증 규칙의 max_word_card_percentage는 0보다 크고 100 이하인 수여야 합니다.")
+    if not isinstance(rules.get("word_frequency_min_cards"), int) or rules["word_frequency_min_cards"] < 1:
+        raise PipelineInputError("검증 규칙의 word_frequency_min_cards는 1 이상의 정수여야 합니다.")
+    for key in ("sentence_verbs", "banned_terms", "non_visual_terms"):
         values = rules.get(key)
         if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
             raise PipelineInputError(f"검증 규칙의 {key}는 문자열 배열이어야 합니다.")
@@ -233,7 +248,50 @@ def validate_subject(subject: str, rules: Mapping[str, Any]) -> list[str]:
     banned_terms = [term for term in rules["banned_terms"] if _contains_term(subject, term)]
     if banned_terms:
         errors.append(f"subject에 금지된 화풍·시대·작가·품질 단어가 있습니다: {', '.join(banned_terms)}")
+    non_visual_terms = [term for term in rules["non_visual_terms"] if _contains_term(subject, term)]
+    if non_visual_terms:
+        errors.append(f"subject에 그림 대상이 아닌 추상 명사가 있습니다: {', '.join(non_visual_terms)}")
     return errors
+
+
+def _corpus_overlap_issues(
+    subjects: Sequence[tuple[str, str]],
+    rules: Mapping[str, Any],
+    card_count_for_frequency: int | None = None,
+) -> list[tuple[str, str]]:
+    """카드별 형식 검사와 별도로, 한 묶음 안의 시각 어휘 쏠림을 드러낸다."""
+    phrase_cards: dict[str, list[str]] = {}
+    word_cards: dict[str, list[str]] = {}
+    for card_id, subject in subjects:
+        for phrase in _noun_phrases(subject):
+            phrase_cards.setdefault(phrase, []).append(card_id)
+        for word in _words(subject):
+            word_cards.setdefault(word, []).append(card_id)
+
+    issues: list[tuple[str, str]] = []
+    maximum_phrase_cards = rules["max_noun_phrase_cards"]
+    for phrase, card_ids in sorted(phrase_cards.items()):
+        if len(card_ids) > maximum_phrase_cards:
+            message = (
+                f"명사구 '{phrase}'가 {len(card_ids)}장에 겹칩니다(허용 최대 {maximum_phrase_cards}장): "
+                f"{', '.join(card_ids)}"
+            )
+            issues.extend((card_id, message) for card_id in card_ids)
+
+    total_cards = card_count_for_frequency if card_count_for_frequency is not None else len(subjects)
+    if total_cards < rules["word_frequency_min_cards"]:
+        return issues
+
+    maximum_percentage = rules["max_word_card_percentage"]
+    for word, card_ids in sorted(word_cards.items()):
+        percentage = len(card_ids) / total_cards * 100
+        if percentage >= maximum_percentage:
+            message = (
+                f"낱말 '{word}'가 {len(card_ids)}/{total_cards}장({percentage:.1f}%)에 겹칩니다"
+                f"({maximum_percentage}% 이상 금지): {', '.join(card_ids)}"
+            )
+            issues.extend((card_id, message) for card_id in card_ids)
+    return issues
 
 
 def validate_prompt_document(
@@ -249,6 +307,7 @@ def validate_prompt_document(
 
     negative_words = _words(negative_prompt)
     issues: list[tuple[str, str]] = []
+    subjects: list[tuple[str, str]] = []
     for index, value in enumerate(cards, start=1):
         card = require_mapping(value, f"cards[{index}]")
         card_id = card.get("id")
@@ -258,6 +317,7 @@ def validate_prompt_document(
         if not isinstance(subject, str):
             issues.append((display_id, "subject 문자열이 없습니다."))
             continue
+        subjects.append((display_id, subject))
         if not isinstance(prompt, str):
             issues.append((display_id, "prompt 문자열이 없습니다."))
             continue
@@ -271,6 +331,7 @@ def validate_prompt_document(
             issues.append(
                 (display_id, f"positive prompt에 네거티브 프롬프트 단어가 있습니다: {', '.join(conflicts)}")
             )
+    issues.extend(_corpus_overlap_issues(subjects, rules))
     return issues
 
 
@@ -471,6 +532,81 @@ def _generated_subject_issues(
     return issues
 
 
+def _generated_corpus_issues(
+    card_id: str,
+    subject: str,
+    records: Sequence[Mapping[str, str]],
+    rules: Mapping[str, Any],
+    total_card_count: int,
+) -> list[str]:
+    subjects = [(record["id"], record["subject"]) for record in records]
+    subjects.append((card_id, subject))
+    return [
+        message
+        for issue_card_id, message in _corpus_overlap_issues(
+            subjects,
+            rules,
+            card_count_for_frequency=total_card_count,
+        )
+        if issue_card_id == card_id
+    ]
+
+
+def _card_context_with_reserved_phrases(
+    card_context: str,
+    records: Sequence[Mapping[str, str]],
+    rules: Mapping[str, Any],
+    total_card_count: int,
+) -> str:
+    if not records:
+        return card_context
+    phrases = sorted(
+        phrase
+        for record in records
+        for phrase in _noun_phrases(record["subject"])
+    )
+    saturated_words: list[str] = []
+    if total_card_count >= rules["word_frequency_min_cards"]:
+        word_cards: dict[str, set[str]] = {}
+        for record in records:
+            for word in _words(record["subject"]):
+                word_cards.setdefault(word, set()).add(record["id"])
+        saturated_words = sorted(
+            word
+            for word, card_ids in word_cards.items()
+            if (len(card_ids) + 1) / total_card_count * 100 >= rules["max_word_card_percentage"]
+        )
+    word_instruction = ""
+    if saturated_words:
+        word_instruction = (
+            " These words would exceed the corpus frequency cap on this card, so do not use them: "
+            f"{', '.join(saturated_words)}"
+        )
+    return (
+        f"{card_context}\n\n"
+        "These exact noun phrases are already assigned to other cards. They are reserved, not examples; "
+        f"do not repeat any of them: {', '.join(phrases)}{word_instruction}"
+    )
+
+
+def _system_prompt_with_reserved_phrases(
+    system_prompt: str,
+    records: Sequence[Mapping[str, str]],
+) -> str:
+    if not records:
+        return system_prompt
+    phrases = sorted(
+        phrase
+        for record in records
+        for phrase in _noun_phrases(record["subject"])
+    )
+    return (
+        f"{system_prompt}\n\n"
+        "Hard machine constraint for this card: do not output any exact phrase already assigned to another "
+        f"card: {', '.join(phrases)}"
+    )
+
+
 def _corrected_card_context(
     card_context: str,
     subject: str,
@@ -481,8 +617,11 @@ def _corrected_card_context(
         f"{card_context}\n\n"
         f"Your previous output was: {subject}\n"
         f"It failed these machine rules: {'; '.join(issues)}\n"
-        "Return exactly three comma-separated English noun phrases with one to three English words each, "
-        f"at most {max_subject_words} English words total, and no explanation."
+        "HARD CONSTRAINT: discard the previous output. Do not output any exact noun phrase named in the "
+        "already-assigned list or the failure message, even once. Return exactly three comma-separated English "
+        "noun phrases with one to three English words each, "
+        f"at most {max_subject_words} English words total, and no explanation. Replace failed terms with "
+        "card-specific visible objects, people, poses, or materials; never translate an abstract card name."
     )
 
 
@@ -579,12 +718,18 @@ def generate_prompts(arguments: argparse.Namespace) -> int:
         card_id = card.get("id")
         if not isinstance(card_id, str) or not card_id:
             raise PipelineInputError(f"cards.json[{index}]에 id 문자열이 없습니다.")
-        card_context = build_card_context(card)
+        card_context = _card_context_with_reserved_phrases(
+            build_card_context(card),
+            records,
+            rules,
+            len(cards),
+        )
+        card_system_prompt = _system_prompt_with_reserved_phrases(system_prompt, records)
         for attempt in range(MAX_SUBJECT_ATTEMPTS):
             subject = request_subject(
                 arguments.base_url,
                 arguments.model,
-                system_prompt,
+                card_system_prompt,
                 card_context,
                 card_id,
                 arguments.temperature,
@@ -592,6 +737,9 @@ def generate_prompts(arguments: argparse.Namespace) -> int:
                 lm_studio_native_endpoint,
             )
             subject_issues = _generated_subject_issues(subject, rules, negative_prompt)
+            subject_issues.extend(
+                _generated_corpus_issues(card_id, subject, records, rules, len(cards))
+            )
             if not subject_issues:
                 break
             if attempt + 1 < MAX_SUBJECT_ATTEMPTS:

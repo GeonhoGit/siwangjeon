@@ -1,5 +1,20 @@
 {
   "max_subject_words": 12,
+  "max_noun_phrase_cards": 1,
+  "max_word_card_percentage": 25,
+  "word_frequency_min_cards": 5,
+  "non_visual_terms": [
+    "momentum",
+    "stamina",
+    "vow",
+    "oath",
+    "energy",
+    "defense",
+    "rhythm",
+    "vitality",
+    "aura",
+    "motion"
+  ],
   "sentence_verbs": [
     "is",
     "are",
