@@ -274,15 +274,50 @@ class OpenAiCompatibleGenerationTest(unittest.TestCase):
                 ],
                 "temperature": 0.25,
                 "seed": 31415,
+                "max_tokens": 256,
+                "chat_template_kwargs": {"enable_thinking": False},
             },
         )
 
-    def test_empty_chat_response_names_the_card(self) -> None:
-        """빈 응답을 템플릿에 넣으면 형식 검증 이전에 손상된 산출물이 생긴다."""
+    def test_reasoning_only_chat_response_explains_missing_final_content(self) -> None:
+        """추론 토큰을 답으로 오해하면 length 원인을 보고도 재현 조건을 고칠 수 없다."""
         module = self._load_module()
-        response = self._Response({"choices": [{"message": {"content": "   "}}]})
+        response = self._Response(
+            {
+                "choices": [
+                    {
+                        "message": {"content": "   ", "reasoning_content": "Thinking Process"},
+                        "finish_reason": "stop",
+                    }
+                ]
+            }
+        )
         with mock.patch.object(module.urlrequest, "urlopen", return_value=response):
-            with self.assertRaisesRegex(module.PipelineInputError, "카드 card_empty.*비어 있습니다"):
+            with self.assertRaisesRegex(
+                module.PipelineInputError,
+                "finish_reason: stop.*reasoning_content만 있고 최종 대상 묘사 content가 없습니다",
+            ):
+                module.request_subject(
+                    "http://localhost:1234/v1",
+                    "qwen/qwen3.5-9b",
+                    "system contract",
+                    "card context",
+                    "card_empty",
+                    0.0,
+                    0,
+                )
+
+    def test_length_limited_chat_response_names_the_token_limit(self) -> None:
+        """빈 문자열과 length 절단은 후속 조치가 다르므로 오류 원인을 분리한다."""
+        module = self._load_module()
+        response = self._Response(
+            {"choices": [{"message": {"content": "   "}, "finish_reason": "length"}]}
+        )
+        with mock.patch.object(module.urlrequest, "urlopen", return_value=response):
+            with self.assertRaisesRegex(
+                module.PipelineInputError,
+                "finish_reason: length.*출력 토큰 한도에 도달해 최종 답이 잘렸습니다",
+            ):
                 module.request_subject(
                     "http://localhost:1234/v1",
                     "qwen/qwen3.5-9b",
@@ -377,7 +412,132 @@ class OpenAiCompatibleGenerationTest(unittest.TestCase):
                 "seed": 31415,
             },
         )
-        self.assertEqual(json.loads(requests[1].data)["seed"], document["generation"]["seed"])
+        chat_request = next(request for request in requests if request.get_method() == "POST")
+        self.assertEqual(json.loads(chat_request.data)["seed"], document["generation"]["seed"])
+
+    def test_generate_uses_lm_studio_reasoning_off_with_a_bounded_output(self) -> None:
+        """기본 Qwen은 사고 토큰만 쓰다 length로 끝날 수 있어 서버의 공식 추론 제어를 쓴다."""
+        module = self._load_module()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            cards_path = directory / "cards.json"
+            output_path = directory / "cards_prompts.json"
+            cards_path.write_text(
+                json.dumps(
+                    [{"id": "card_blade", "name": "검", "effects": [{"op": "damage", "value": 4}]}],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            requests: list[object] = []
+
+            def fake_urlopen(request: object, timeout: int) -> "OpenAiCompatibleGenerationTest._Response":
+                requests.append(request)
+                if request.full_url.endswith("/api/v1/models"):
+                    return self._Response(
+                        {
+                            "models": [
+                                {
+                                    "key": "qwen/qwen3.5-9b",
+                                    "capabilities": {
+                                        "reasoning": {"allowed_options": ["off", "on"]}
+                                    },
+                                }
+                            ]
+                        }
+                    )
+                if request.full_url.endswith("/v1/models"):
+                    return self._Response({"data": [{"id": "qwen/qwen3.5-9b"}]})
+                return self._Response(
+                    {"output": [{"type": "message", "content": "bronze sword, crimson flame"}]}
+                )
+
+            with (
+                mock.patch.object(module.urlrequest, "urlopen", side_effect=fake_urlopen),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = module.main(
+                    [
+                        "generate",
+                        "--cards",
+                        str(cards_path),
+                        "--output",
+                        str(output_path),
+                    ]
+                )
+            document = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        native_request = next(request for request in requests if request.get_method() == "POST")
+        self.assertEqual(native_request.full_url, "http://localhost:1234/api/v1/chat")
+        native_payload = json.loads(native_request.data)
+        self.assertEqual(native_payload["reasoning"], "off")
+        self.assertEqual(native_payload["max_output_tokens"], 256)
+        self.assertFalse(native_payload["store"])
+        self.assertNotIn("seed", native_payload)
+        self.assertIn("project-wide negative prompt", native_payload["system_prompt"])
+        self.assertIn("armor", native_payload["system_prompt"])
+        self.assertIsNone(document["generation"]["seed"])
+
+    def test_generate_retries_a_negative_prompt_conflict_once(self) -> None:
+        """방어 카드가 armor를 자연스럽게 고르면 실제 충돌 단어를 줘야 결과 검증까지 통과한다."""
+        module = self._load_module()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            cards_path = directory / "cards.json"
+            output_path = directory / "cards_prompts.json"
+            cards_path.write_text(
+                json.dumps(
+                    [{"id": "card_guard", "name": "수비", "effects": [{"op": "block", "value": 5}]}],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            requests: list[object] = []
+            chat_responses = iter(
+                [
+                    {"output": [{"type": "message", "content": "iron armor, armored guard, stance"}]},
+                    {"output": [{"type": "message", "content": "iron shield, plated guard, defensive stance"}]},
+                ]
+            )
+
+            def fake_urlopen(request: object, timeout: int) -> "OpenAiCompatibleGenerationTest._Response":
+                requests.append(request)
+                if request.full_url.endswith("/api/v1/models"):
+                    return self._Response(
+                        {
+                            "models": [
+                                {
+                                    "key": "qwen/qwen3.5-9b",
+                                    "capabilities": {
+                                        "reasoning": {"allowed_options": ["off", "on"]}
+                                    },
+                                }
+                            ]
+                        }
+                    )
+                if request.full_url.endswith("/v1/models"):
+                    return self._Response({"data": [{"id": "qwen/qwen3.5-9b"}]})
+                return self._Response(next(chat_responses))
+
+            with (
+                mock.patch.object(module.urlrequest, "urlopen", side_effect=fake_urlopen),
+                contextlib.redirect_stdout(io.StringIO()),
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                result = module.main(
+                    ["generate", "--cards", str(cards_path), "--output", str(output_path)]
+                )
+
+            document = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        chat_requests = [request for request in requests if request.get_method() == "POST"]
+        self.assertEqual(len(chat_requests), 2)
+        correction = json.loads(chat_requests[1].data)["input"]
+        self.assertIn("armor", correction)
+        self.assertEqual(document["cards"][0]["subject"], "iron shield, plated guard, defensive stance")
 
 
 if __name__ == "__main__":

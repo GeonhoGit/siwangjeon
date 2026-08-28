@@ -28,6 +28,12 @@ DEFAULT_MODEL = "qwen/qwen3.5-9b"
 DEFAULT_TEMPERATURE = 0.0
 DEFAULT_SEED = 0
 REQUEST_TIMEOUT_SECONDS = 60
+# 대상 묘사는 계약상 12단어 이내라 256토큰이면 충분하다. 추론 모델은 이 상한 안에서
+# 사고 과정만 길게 쓰고 최종 답을 못 낼 수 있으므로, LM Studio가 지원하면 추론을 끈다.
+MAX_OUTPUT_TOKENS = 256
+# 공통 계약만으로는 카드 맥락에 따라 네거티브 단어가 섞일 수 있다. 실제 충돌 단어를 한 번
+# 되돌려 주되 무한 재시도로 생성 결과와 실행 시간을 불확실하게 만들지는 않는다.
+MAX_SUBJECT_ATTEMPTS = 2
 
 
 class PipelineInputError(ValueError):
@@ -298,6 +304,36 @@ def _endpoint_url(base_url: str, path: str) -> str:
     return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
+def _lm_studio_native_chat_endpoint(base_url: str, model: str) -> str | None:
+    """추론을 끌 수 있는 LM Studio 모델에만 네이티브 chat 경로를 사용한다."""
+    normalized_base_url = base_url.rstrip("/")
+    if not normalized_base_url.endswith("/v1"):
+        return None
+
+    lm_studio_base_url = normalized_base_url[: -len("/v1")]
+    models_endpoint = _endpoint_url(lm_studio_base_url, "api/v1/models")
+    request = urlrequest.Request(models_endpoint, headers={"Accept": "application/json"}, method="GET")
+    try:
+        response = _read_json_response(request, base_url)
+    except PipelineInputError:
+        # 다른 OpenAI 호환 서버는 이 비표준 경로를 제공하지 않을 수 있으므로 기존 경로를 쓴다.
+        return None
+
+    if not isinstance(response, Mapping) or not isinstance(response.get("models"), list):
+        return None
+    for available_model in response["models"]:
+        if not isinstance(available_model, Mapping) or available_model.get("key") != model:
+            continue
+        capabilities = available_model.get("capabilities")
+        reasoning = capabilities.get("reasoning") if isinstance(capabilities, Mapping) else None
+        allowed_options = reasoning.get("allowed_options") if isinstance(reasoning, Mapping) else None
+        if isinstance(allowed_options, list) and "off" in allowed_options:
+            # LM Studio의 OpenAI 호환 경로는 chat_template_kwargs를 무시할 수 있다. 네이티브
+            # 경로의 reasoning=off는 모델 메타데이터로 지원 여부를 확인한 뒤에만 보낸다.
+            return _endpoint_url(lm_studio_base_url, "api/v1/chat")
+    return None
+
+
 def _connection_error(base_url: str) -> PipelineInputError:
     return PipelineInputError(
         f"OpenAI 호환 서버에 연결할 수 없습니다: {base_url}. "
@@ -353,6 +389,97 @@ def require_available_model(base_url: str, model: str) -> None:
         )
 
 
+def _empty_subject_error(
+    card_id: str,
+    finish_reason: object,
+    reasoning_content: object,
+) -> PipelineInputError:
+    reason = finish_reason if isinstance(finish_reason, str) and finish_reason else "없음"
+    message = f"카드 {card_id}: 대상 묘사 응답이 비어 있습니다 (finish_reason: {reason})."
+    if isinstance(reasoning_content, str) and reasoning_content.strip():
+        message += " reasoning_content만 있고 최종 대상 묘사 content가 없습니다."
+        if reason == "length":
+            message += " 추론이 출력 토큰 한도에 도달해 최종 답을 쓰기 전에 끝났습니다."
+    elif reason == "length":
+        message += " 출력 토큰 한도에 도달해 최종 답이 잘렸습니다."
+    else:
+        message += " 모델이 최종 대상 묘사를 반환하지 않았습니다."
+    return PipelineInputError(message)
+
+
+def _request_lm_studio_subject(
+    endpoint: str,
+    base_url: str,
+    model: str,
+    system_prompt: str,
+    card_context: str,
+    card_id: str,
+    temperature: float,
+) -> str:
+    payload = {
+        "model": model,
+        "system_prompt": system_prompt,
+        "input": card_context,
+        "temperature": temperature,
+        "max_output_tokens": MAX_OUTPUT_TOKENS,
+        "reasoning": "off",
+        "store": False,
+    }
+    request = urlrequest.Request(
+        endpoint,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        response = _read_json_response(request, base_url)
+    except LlmResponseError as error:
+        raise PipelineInputError(f"카드 {card_id}: {error}") from error
+    try:
+        output = response["output"]
+        message = next(
+            item for item in output if isinstance(item, Mapping) and item.get("type") == "message"
+        )
+        subject = message.get("content")
+    except (KeyError, StopIteration, TypeError) as error:
+        raise PipelineInputError(
+            f"카드 {card_id}: LM Studio chat 응답에 최종 대상 묘사가 없습니다."
+        ) from error
+    if not isinstance(subject, str) or not subject.strip():
+        raise PipelineInputError(f"카드 {card_id}: LM Studio가 빈 대상 묘사를 반환했습니다.")
+    return subject.strip()
+
+
+def _system_prompt_with_negative_terms(system_prompt: str, negative_prompt: str) -> str:
+    """대상 묘사가 공통 네거티브 프롬프트와 충돌하지 않도록 단일 목록을 전달한다."""
+    return (
+        f"{system_prompt}\n\n"
+        "Do not use any word or phrase from this project-wide negative prompt in your output:\n"
+        f"{negative_prompt}"
+    )
+
+
+def _generated_subject_issues(
+    subject: str,
+    rules: Mapping[str, Any],
+    negative_prompt: str,
+) -> list[str]:
+    issues = validate_subject(subject, rules)
+    conflicts = sorted(_words(subject).intersection(_words(negative_prompt)))
+    if conflicts:
+        issues.append(f"subject uses forbidden negative prompt words: {', '.join(conflicts)}")
+    return issues
+
+
+def _corrected_card_context(card_context: str, subject: str, issues: Sequence[str]) -> str:
+    return (
+        f"{card_context}\n\n"
+        f"Your previous output was: {subject}\n"
+        f"It failed these machine rules: {'; '.join(issues)}\n"
+        "Return a replacement with different concrete nouns. Output only comma-separated English noun phrases."
+    )
+
+
 def request_subject(
     base_url: str,
     model: str,
@@ -361,7 +488,21 @@ def request_subject(
     card_id: str,
     temperature: float,
     seed: int,
+    lm_studio_native_endpoint: str | None = None,
 ) -> str:
+    if lm_studio_native_endpoint is not None:
+        # /api/v1/chat은 seed를 허용하지 않아 보내면 400이 된다. 적용하지 못한 값은 산출물에
+        # null로 남겨, 실제 요청 조건으로 오인하지 않게 generate_prompts에서 구분한다.
+        return _request_lm_studio_subject(
+            lm_studio_native_endpoint,
+            base_url,
+            model,
+            system_prompt,
+            card_context,
+            card_id,
+            temperature,
+        )
+
     endpoint = _endpoint_url(base_url, "chat/completions")
     payload = {
         "model": model,
@@ -371,6 +512,8 @@ def request_subject(
         ],
         "temperature": temperature,
         "seed": seed,
+        "max_tokens": MAX_OUTPUT_TOKENS,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     request = urlrequest.Request(
         endpoint,
@@ -384,22 +527,28 @@ def request_subject(
         raise PipelineInputError(f"카드 {card_id}: {error}") from error
     try:
         choices = response["choices"]
-        message = choices[0]["message"]
-        subject = message["content"]
+        choice = choices[0]
+        message = choice["message"]
+        subject = message.get("content")
     except (KeyError, IndexError, TypeError) as error:
         raise PipelineInputError(
             f"카드 {card_id}: OpenAI 호환 chat completions 응답 형식이 잘못되었습니다."
         ) from error
     if not isinstance(subject, str) or not subject.strip():
-        raise PipelineInputError(f"카드 {card_id}: 대상 묘사 응답이 비어 있습니다.")
+        finish_reason = choice.get("finish_reason") if isinstance(choice, Mapping) else None
+        reasoning_content = message.get("reasoning_content") if isinstance(message, Mapping) else None
+        raise _empty_subject_error(card_id, finish_reason, reasoning_content)
     return subject.strip()
 
 
 def generate_prompts(arguments: argparse.Namespace) -> int:
     cards = require_list(read_json(arguments.cards), "cards.json")
     template = read_text(arguments.template)
-    system_prompt = read_text(arguments.system_prompt)
     negative_prompt = read_text(arguments.negative)
+    system_prompt = _system_prompt_with_negative_terms(
+        read_text(arguments.system_prompt),
+        negative_prompt,
+    )
     rules = load_rules(arguments.rules)
 
     missing_description_count = sum(
@@ -413,6 +562,10 @@ def generate_prompts(arguments: argparse.Namespace) -> int:
         )
 
     require_available_model(arguments.base_url, arguments.model)
+    lm_studio_native_endpoint = _lm_studio_native_chat_endpoint(
+        arguments.base_url,
+        arguments.model,
+    )
 
     records: list[dict[str, str]] = []
     for index, value in enumerate(cards, start=1):
@@ -420,17 +573,24 @@ def generate_prompts(arguments: argparse.Namespace) -> int:
         card_id = card.get("id")
         if not isinstance(card_id, str) or not card_id:
             raise PipelineInputError(f"cards.json[{index}]에 id 문자열이 없습니다.")
-        subject = request_subject(
-            arguments.base_url,
-            arguments.model,
-            system_prompt,
-            build_card_context(card),
-            card_id,
-            arguments.temperature,
-            arguments.seed,
-        )
-        subject_issues = validate_subject(subject, rules)
-        if subject_issues:
+        card_context = build_card_context(card)
+        for attempt in range(MAX_SUBJECT_ATTEMPTS):
+            subject = request_subject(
+                arguments.base_url,
+                arguments.model,
+                system_prompt,
+                card_context,
+                card_id,
+                arguments.temperature,
+                arguments.seed,
+                lm_studio_native_endpoint,
+            )
+            subject_issues = _generated_subject_issues(subject, rules, negative_prompt)
+            if not subject_issues:
+                break
+            if attempt + 1 < MAX_SUBJECT_ATTEMPTS:
+                card_context = _corrected_card_context(card_context, subject, subject_issues)
+        else:
             raise PipelineInputError(f"카드 {card_id}: 대상 묘사 형식이 잘못되었습니다: {subject_issues[0]}")
         records.append(
             {
@@ -447,7 +607,7 @@ def generate_prompts(arguments: argparse.Namespace) -> int:
             "base_url": arguments.base_url,
             "model": arguments.model,
             "temperature": arguments.temperature,
-            "seed": arguments.seed,
+            "seed": arguments.seed if lm_studio_native_endpoint is None else None,
         },
         "template": str(arguments.template.relative_to(REPOSITORY_ROOT)),
         "negative_prompt": str(arguments.negative.relative_to(REPOSITORY_ROOT)),
