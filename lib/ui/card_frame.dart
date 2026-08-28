@@ -79,7 +79,13 @@ const _cardArtDirectory = 'assets/card_art';
 const _cardArtExtensions = ['webp', 'png', 'jpg', 'jpeg'];
 // 이름 띠와 하단 규칙 상자를 제외한 오른쪽 아트 칸의 비율이다. 이 값이면
 // 248dp 프레임이 규칙 상자를 포함해 목업의 약 3:4.4 비율이 된다.
+// 1080×2340(Galaxy S25 Ultra, 2.8125 DPR)의 논리 화면은 384×832dp다.
+// 글자 배율 1.3의 보상·상점 목록은 제목을 빼면 약 700dp라 후보 3장의 프레임
+// 높이를 키울 여유가 거의 없다. 원본 3:4 비율(0.75)은 유지하되 48×64dp
+// 썸네일로 규칙 상자 옆에 둔다. 큰 목업처럼 아트를 위에 쌓으면 후보 하나가
+// 화면의 절반을 차지하지만, 이 크기는 실제 그림을 읽으면서도 세 장을 비교하게 한다.
 const cardArtAspectRatio = 0.75;
+const _cardArtThumbnailWidth = 48.0;
 
 /// 카드 id에 맞는 포함된 아트 asset을 찾는다.
 ///
@@ -285,11 +291,12 @@ class _CompactCardContents extends StatelessWidget {
   }
 }
 
-// 248dp 전체 카드에서 약 3%인 8dp만 남긴다. 카드 유형을 훑어볼 색 신호는
-// 유지하면서, 세로 이름을 담던 빈 36dp 띠의 28dp를 이름·아트·규칙 상자에
-// 돌려준다. 96dp 손패는 이 띠를 쓰지 않는 별도 컴팩트 레이아웃이라 그대로 둔다.
+// 248dp 전체 카드에서 약 3%인 8dp만 남겨 카드 유형을 훑어볼 색 신호로 쓴다.
+// 96dp 손패는 이 띠를 쓰지 않는 별도 컴팩트 레이아웃이라 그대로 둔다.
 const _typeColorStripeWidth = 8.0;
-const _artlessIdentityAreaHeight = 46.0;
+// 제목 띠는 아트와 분리된 46dp 영역이다. 96dp 손패는 이 영역을 쓰지 않는
+// 별도 컴팩트 레이아웃이라 그대로 유지된다.
+const _fullCardHeaderHeight = 46.0;
 const _typeMedallionSpace = 22.0;
 
 class _FullCardContents extends StatelessWidget {
@@ -315,29 +322,45 @@ class _FullCardContents extends StatelessWidget {
     return Stack(
       key: ValueKey('card-frame-full-${card.id}'),
       children: [
-        // 유형색 띠가 차지하는 폭만 제외하고 아트가 프레임 가장자리까지
-        // 닿는다. 아트가 없을 때도 같은 구조를 유지하고 이 칸의 높이만 줄인다.
+        // 아트는 규칙과 같은 세로 띠를 공유한다. 따라서 아트가 있어도 후보
+        // 목록의 카드 높이가 커지지 않고, 없는 카드는 기존 규칙 상자만 남는다.
         Padding(
           padding: const EdgeInsets.only(left: _typeColorStripeWidth),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (artAsset case final asset?)
-                CardArtSlot(
-                  cardId: card.id,
-                  color: presentation.typeColor,
-                  asset: asset,
-                )
-              else
-                const SizedBox(height: _artlessIdentityAreaHeight),
+              const SizedBox(height: _fullCardHeaderHeight),
               const SizedBox(height: 4),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: _RulesBox(
-                  card: card,
-                  labels: effectLabels,
-                  effectKeyPrefix: effectKeyPrefix,
-                ),
+                child: switch (artAsset) {
+                  final asset? => Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: _cardArtThumbnailWidth,
+                        child: CardArtSlot(
+                          cardId: card.id,
+                          color: presentation.typeColor,
+                          asset: asset,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _RulesBox(
+                          card: card,
+                          labels: effectLabels,
+                          effectKeyPrefix: effectKeyPrefix,
+                        ),
+                      ),
+                    ],
+                  ),
+                  null => _RulesBox(
+                    card: card,
+                    labels: effectLabels,
+                    effectKeyPrefix: effectKeyPrefix,
+                  ),
+                },
               ),
               if (footer case final footer?) ...[
                 const SizedBox(height: 4),
@@ -424,8 +447,9 @@ class _HorizontalCardName extends StatelessWidget {
       label: card.name,
       excludeSemantics: true,
       child: DecoratedBox(
+        key: ValueKey('card-name-band-${card.id}'),
         decoration: BoxDecoration(
-          color: _CardFrameColors.paperLight.withValues(alpha: 0.94),
+          color: _CardFrameColors.paperLight,
           border: const Border(
             bottom: BorderSide(color: _CardFrameColors.gold, width: 0.8),
           ),
@@ -601,8 +625,6 @@ class CardArtSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     return AspectRatio(
       key: ValueKey('card-art-$cardId'),
-      // 아트가 있는 카드만 목업 비율의 세로 공간을 사용한다. asset이 없으면
-      // 작은 식별 영역으로 줄어 세 후보를 한 화면에서 비교할 수 있다.
       aspectRatio: cardArtAspectRatio,
       child: Image.asset(
         asset,

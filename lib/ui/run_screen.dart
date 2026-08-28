@@ -33,7 +33,9 @@ const _mapHorizontalInset = 36.0;
 /// 런 진행도에 맞는 화면을 고른다. 화면 전환 자체는 저장할 상태가 아니며,
 /// 항상 domain의 재생 결과에서 다시 정해진다.
 class RunScreen extends ConsumerWidget {
-  const RunScreen({super.key});
+  const RunScreen({super.key, this.artResolver = cardArtAssetFor});
+
+  final CardArtResolver artResolver;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,7 +51,11 @@ class RunScreen extends ConsumerWidget {
       );
     }
     if (progress.pendingCardReward != null) {
-      return _RewardScreen(session: session, onChoose: controller.dispatch);
+      return _RewardScreen(
+        session: session,
+        onChoose: controller.dispatch,
+        artResolver: artResolver,
+      );
     }
     if (progress.pendingRelicReward != null) {
       return _RelicRewardScreen(
@@ -58,10 +64,18 @@ class RunScreen extends ConsumerWidget {
       );
     }
     if (progress.pendingShop != null) {
-      return _ShopScreen(session: session, onChoose: controller.dispatch);
+      return _ShopScreen(
+        session: session,
+        onChoose: controller.dispatch,
+        artResolver: artResolver,
+      );
     }
     if (progress.pendingWildCamp != null) {
-      return _WildCampScreen(session: session, onChoose: controller.dispatch);
+      return _WildCampScreen(
+        session: session,
+        onChoose: controller.dispatch,
+        artResolver: artResolver,
+      );
     }
     if (progress.pendingEvent != null) {
       return _EventScreen(session: session, onChoose: controller.dispatch);
@@ -451,10 +465,15 @@ class _MapEdgesPainter extends CustomPainter {
 }
 
 class _RewardScreen extends StatelessWidget {
-  const _RewardScreen({required this.session, required this.onChoose});
+  const _RewardScreen({
+    required this.session,
+    required this.onChoose,
+    required this.artResolver,
+  });
 
   final RunSession session;
   final ValueChanged<ChooseCardReward> onChoose;
+  final CardArtResolver artResolver;
 
   @override
   Widget build(BuildContext context) {
@@ -506,6 +525,7 @@ class _RewardScreen extends StatelessWidget {
                   return _RewardCardButton(
                     card: card,
                     onChoose: choice == null ? null : () => onChoose(choice),
+                    artResolver: artResolver,
                   );
                 },
               ),
@@ -573,10 +593,15 @@ class _RelicRewardScreen extends StatelessWidget {
 }
 
 class _RewardCardButton extends StatelessWidget {
-  const _RewardCardButton({required this.card, required this.onChoose});
+  const _RewardCardButton({
+    required this.card,
+    required this.onChoose,
+    required this.artResolver,
+  });
 
   final CardDef card;
   final VoidCallback? onChoose;
+  final CardArtResolver artResolver;
 
   @override
   Widget build(BuildContext context) {
@@ -601,16 +626,22 @@ class _RewardCardButton extends StatelessWidget {
         card: card,
         effectLabels: effects,
         effectKeyPrefix: 'reward-card-effect-${card.id}',
+        artResolver: artResolver,
       ),
     );
   }
 }
 
 class _ShopScreen extends StatelessWidget {
-  const _ShopScreen({required this.session, required this.onChoose});
+  const _ShopScreen({
+    required this.session,
+    required this.onChoose,
+    required this.artResolver,
+  });
 
   final RunSession session;
   final ValueChanged<RunAction> onChoose;
+  final CardArtResolver artResolver;
 
   @override
   Widget build(BuildContext context) {
@@ -643,6 +674,7 @@ class _ShopScreen extends StatelessWidget {
               onPurchase: purchasesByCardId[card.id] == null
                   ? null
                   : () => onChoose(purchasesByCardId[card.id]!),
+              artResolver: artResolver,
             ),
             const SizedBox(height: 12),
           ],
@@ -658,6 +690,7 @@ class _ShopScreen extends StatelessWidget {
             _ShopRemoveCardButton(
               deckCard: progress.deckCards[index],
               deckPosition: index + 1,
+              artResolver: artResolver,
               onRemove:
                   removalsByCardInstanceId[progress
                           .deckCards[index]
@@ -691,11 +724,13 @@ class _ShopCardButton extends StatelessWidget {
     required this.card,
     required this.price,
     required this.onPurchase,
+    required this.artResolver,
   });
 
   final CardDef card;
   final int price;
   final VoidCallback? onPurchase;
+  final CardArtResolver artResolver;
 
   @override
   Widget build(BuildContext context) {
@@ -714,6 +749,7 @@ class _ShopCardButton extends StatelessWidget {
         card: card,
         effectLabels: effects,
         effectKeyPrefix: 'shop-card-effect-${card.id}',
+        artResolver: artResolver,
         footer: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -731,11 +767,13 @@ class _ShopRemoveCardButton extends StatelessWidget {
     required this.deckCard,
     required this.deckPosition,
     required this.onRemove,
+    required this.artResolver,
   });
 
   final RunDeckCard deckCard;
   final int deckPosition;
   final VoidCallback? onRemove;
+  final CardArtResolver artResolver;
 
   @override
   Widget build(BuildContext context) {
@@ -752,6 +790,7 @@ class _ShopRemoveCardButton extends StatelessWidget {
       child: _LargeCardFrame(
         card: deckCard.card,
         effectLabels: effects,
+        artResolver: artResolver,
         footer: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -765,10 +804,15 @@ class _ShopRemoveCardButton extends StatelessWidget {
 }
 
 class _WildCampScreen extends StatelessWidget {
-  const _WildCampScreen({required this.session, required this.onChoose});
+  const _WildCampScreen({
+    required this.session,
+    required this.onChoose,
+    required this.artResolver,
+  });
 
   final RunSession session;
   final ValueChanged<RunAction> onChoose;
+  final CardArtResolver artResolver;
 
   @override
   Widget build(BuildContext context) {
@@ -802,6 +846,7 @@ class _WildCampScreen extends StatelessWidget {
                   deckCard: deckCard,
                   action: action,
                   onChoose: onChoose,
+                  artResolver: artResolver,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -854,11 +899,13 @@ class _WildCampEnhanceCardButton extends StatelessWidget {
     required this.deckCard,
     required this.action,
     required this.onChoose,
+    required this.artResolver,
   });
 
   final RunDeckCard deckCard;
   final EnhanceWildCampCard action;
   final ValueChanged<RunAction> onChoose;
+  final CardArtResolver artResolver;
 
   @override
   Widget build(BuildContext context) {
@@ -875,6 +922,7 @@ class _WildCampEnhanceCardButton extends StatelessWidget {
       child: _LargeCardFrame(
         card: deckCard.card,
         effectLabels: effects,
+        artResolver: artResolver,
         footer: const Text('강화할 카드'),
       ),
     );
@@ -1063,12 +1111,14 @@ class _LargeCardFrame extends StatelessWidget {
   const _LargeCardFrame({
     required this.card,
     required this.effectLabels,
+    required this.artResolver,
     this.effectKeyPrefix,
     this.footer,
   });
 
   final CardDef card;
   final List<String> effectLabels;
+  final CardArtResolver artResolver;
   final String? effectKeyPrefix;
   final Widget? footer;
 
@@ -1085,6 +1135,7 @@ class _LargeCardFrame extends StatelessWidget {
           effectLabels: effectLabels,
           effectKeyPrefix: effectKeyPrefix,
           footer: footer,
+          artResolver: artResolver,
         ),
       ),
     );
