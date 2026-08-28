@@ -61,6 +61,7 @@ flutter:
 
   assets:
     - assets/data/cards.json
+    - assets/card_art/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -32,7 +32,17 @@ const _powerCard = CardDef(
   effects: [BlockEffect(2)],
 );
 
-Widget _frameHarness({required double width, required CardDef card}) {
+Future<String?> _noCardArt(AssetBundle assetBundle, String cardId) async =>
+    null;
+
+Future<String?> _virtualCardArt(AssetBundle assetBundle, String cardId) async =>
+    'assets/card_art/$cardId.webp';
+
+Widget _frameHarness({
+  required double width,
+  required CardDef card,
+  CardArtResolver artResolver = _noCardArt,
+}) {
   return MaterialApp(
     home: Scaffold(
       body: Center(
@@ -42,6 +52,7 @@ Widget _frameHarness({required double width, required CardDef card}) {
             card: card,
             effectLabels: const ['피해 6', '업 +2', '원한 1'],
             additionalTypeLabels: const ['광역'],
+            artResolver: artResolver,
           ),
         ),
       ),
@@ -96,7 +107,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('144dp를 넘는 프레임은 유형·그림 자리·규칙 전문을 보인다', (tester) async {
+  testWidgets('144dp를 넘는 아트 없는 프레임은 유형과 규칙 전문만 보인다', (tester) async {
     await tester.pumpWidget(_frameHarness(width: 145, card: _attackCard));
 
     expect(
@@ -117,7 +128,7 @@ void main() {
     );
     expect(find.text('공격'), findsOneWidget);
     expect(find.text('광역'), findsOneWidget);
-    expect(find.byKey(const ValueKey('card-art-frame_attack')), findsOneWidget);
+    expect(find.byKey(const ValueKey('card-art-frame_attack')), findsNothing);
     expect(
       find.byKey(const ValueKey('card-rules-frame_attack')),
       findsOneWidget,
@@ -125,6 +136,33 @@ void main() {
     expect(find.text('피해 6'), findsOneWidget);
     expect(find.text('업 +2'), findsOneWidget);
     expect(find.text('원한 1'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('아트 asset이 있으면 2.15:1 슬롯을 넣어 전체 프레임을 키운다', (tester) async {
+    await tester.pumpWidget(_frameHarness(width: 248, card: _attackCard));
+    await tester.pump();
+    final artlessHeight = tester
+        .getSize(find.byKey(const ValueKey('card-frame-frame_attack')))
+        .height;
+
+    await tester.pumpWidget(
+      _frameHarness(
+        width: 248,
+        card: _attackCard,
+        artResolver: _virtualCardArt,
+      ),
+    );
+    await tester.pump();
+
+    final art = tester.widget<AspectRatio>(
+      find.byKey(const ValueKey('card-art-frame_attack')),
+    );
+    final artHeight = tester
+        .getSize(find.byKey(const ValueKey('card-frame-frame_attack')))
+        .height;
+    expect(art.aspectRatio, cardArtAspectRatio);
+    expect(artHeight - artlessHeight, greaterThan(100));
     expect(tester.takeException(), isNull);
   });
 }
