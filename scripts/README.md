@@ -26,7 +26,10 @@ python scripts/gen_prompts.py validate --input art-pipeline/prompts/cards_prompt
 8B~14B급 양자화 범위에 맞는 실제 모델을 선택하되, 생성 전에 `art-pipeline/MODEL.md`의
 원장 절차대로 라이선스 원문을 사람이 확인한다. 생성 결과에는 실제 `base_url`, `model`,
 `temperature`, `seed`를 기록한다. LM Studio 네이티브 API는 `seed`를 받지 않으므로 이 경로의
-`generation.seed`는 적용되지 않았음을 뜻하는 `null`이다. 기본 `temperature=0.0`, `seed=0`은
+`generation.seed`는 적용되지 않았음을 뜻하는 `null`이다. 기본 `temperature=0.0`에서는 같은
+입력에 대해 사실상 결정론적으로 생성하며, 결과 JSON 자체를 커밋하므로 §11.2의 재현성 보관
+목적도 지킨다. Ollama 등 OpenAI 호환 chat completions 서버에서는 요청에 `seed`가 포함되어
+결과 메타데이터에도 그 값이 기록된다. 기본 `temperature=0.0`, `seed=0`은
 `--temperature`, `--seed`로 바꿀 수 있다.
 
 ## 이 PC의 추론 모델
