@@ -5,14 +5,16 @@
 
 커밋 대상은 워크플로 API JSON, kohya_ss 설정, 프롬프트 템플릿·네거티브 프롬프트,
 고정 시드, 출처 원장, 실행 스크립트, 크롭·캡션 완료 학습 데이터와 선별된 출시 아트다.
-수집 원본과 생성 후보만 `.gitignore` 대상이며 별도 드라이브에 백업한다. LoRA 가중치와
-epoch별 체크포인트는 Git LFS를 쓰거나 Release 첨부와 외장 백업을 함께 사용해 보존한다.
+수집 원본과 생성 후보만 `.gitignore` 대상이며 별도 드라이브에 백업한다. SDXL 파생물인 LoRA
+가중치와 epoch별 체크포인트도 공개 Distribution을 피하기 위해 Git 이력에는 넣지 않고,
+외장 백업과 private Release에만 보관한다. 공개 배포를 결정할 때의 라이선스 §4 의무는
+`MODEL.md`에 기록한다.
 
 | 경로 | 역할 |
 |---|---|
 | `MODEL.md` | 실제 채택 전 사람이 기록하는 모델·라이선스 원문 원장 |
 | `dataset/` | 출처 원장, Git에 커밋하는 크롭·캡션 학습 데이터, 수집 원본 보관 규칙 |
-| `lora/` | kohya_ss 재학습 설정과 Release 첨부·외장 백업 가중치 보관 규칙 |
+| `lora/` | kohya_ss 재학습 설정과 private Release·외장 백업 가중치 보관 규칙 |
 | `workflows/` | ComfyUI API 워크플로 템플릿과 생성 고정값 |
 | `prompts/` | 버전 관리되는 프롬프트 계약 |
 | `raw/` | Git에 넣지 않는 생성 후보의 외장 백업 규칙 |
