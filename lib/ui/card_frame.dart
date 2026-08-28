@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show AssetBundle, AssetManifest;
 
 import '../domain/model/card.dart';
 
@@ -71,13 +72,27 @@ CardFramePresentation cardFramePresentation(CardDef card) {
       : type;
 }
 
-/// 카드 id에서 아트 asset을 찾는 유일한 자리다.
+/// [CardFrame]이 아트 asset을 찾는 유일한 진입점이다.
+typedef CardArtResolver =
+    Future<String?> Function(AssetBundle assetBundle, String cardId);
+
+const _cardArtDirectory = 'assets/card_art';
+const _cardArtExtensions = ['webp', 'png', 'jpg', 'jpeg'];
+const cardArtAspectRatio = 2.15;
+
+/// 카드 id에 맞는 포함된 아트 asset을 찾는다.
 ///
-/// 아트 파이프라인이 아직 없어서 지금은 비어 있다. asset이 생기면 이 표만
-/// 채우면 되고, 프레임과 카드 문구는 바뀌지 않는다.
-String? cardArtAssetFor(String cardId) {
-  const assets = <String, String>{};
-  return assets[cardId];
+/// `assets/card_art/<card id>.(webp|png|jpg|jpeg)`라는 파일명 계약만 지키면
+/// pubspec의 디렉터리 선언이 새 파일을 함께 묶는다. 따라서 LoRA 결과물을
+/// 추가할 때 카드 모델이나 이 목록을 고칠 필요가 없다.
+Future<String?> cardArtAssetFor(AssetBundle assetBundle, String cardId) async {
+  final manifest = await AssetManifest.loadFromAssetBundle(assetBundle);
+  final assets = manifest.listAssets();
+  for (final extension in _cardArtExtensions) {
+    final asset = '$_cardArtDirectory/$cardId.$extension';
+    if (assets.contains(asset)) return asset;
+  }
+  return null;
 }
 
 class CardFrame extends StatelessWidget {
@@ -92,6 +107,7 @@ class CardFrame extends StatelessWidget {
     this.effectKeyPrefix,
     this.footer,
     this.additionalTypeLabels = const [],
+    this.artResolver = cardArtAssetFor,
   });
 
   final CardDef card;
@@ -102,6 +118,7 @@ class CardFrame extends StatelessWidget {
   final bool dimmed;
   final String? effectKeyPrefix;
   final Widget? footer;
+  final CardArtResolver artResolver;
 
   /// 한 카드가 두 분류를 가질 콘텐츠가 생기면 그 문구만 추가한다.
   /// 현재 도메인 모델에는 두 번째 분류 필드가 없으므로 비어 있는 것이 맞다.
@@ -114,25 +131,38 @@ class CardFrame extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth <= cardFrameCompactMaximumWidth;
-          return _CardFrameSurface(
-            card: card,
-            presentation: cardFramePresentation(card),
-            minimumHeight: minimumHeight,
-            selected: selected,
-            dimmed: dimmed,
-            child: compact
-                ? _CompactCardContents(
-                    card: card,
-                    effectLabels: effectLabels,
-                    effectKeyPrefix: effectKeyPrefix,
-                  )
-                : _FullCardContents(
-                    card: card,
-                    effectLabels: effectLabels,
-                    effectKeyPrefix: effectKeyPrefix,
-                    footer: footer,
-                    additionalTypeLabels: additionalTypeLabels,
-                  ),
+          if (compact) {
+            return _CardFrameSurface(
+              card: card,
+              presentation: cardFramePresentation(card),
+              minimumHeight: minimumHeight,
+              selected: selected,
+              dimmed: dimmed,
+              child: _CompactCardContents(
+                card: card,
+                effectLabels: effectLabels,
+                effectKeyPrefix: effectKeyPrefix,
+              ),
+            );
+          }
+
+          return FutureBuilder<String?>(
+            future: artResolver(DefaultAssetBundle.of(context), card.id),
+            builder: (context, snapshot) => _CardFrameSurface(
+              card: card,
+              presentation: cardFramePresentation(card),
+              minimumHeight: minimumHeight,
+              selected: selected,
+              dimmed: dimmed,
+              child: _FullCardContents(
+                card: card,
+                effectLabels: effectLabels,
+                effectKeyPrefix: effectKeyPrefix,
+                footer: footer,
+                additionalTypeLabels: additionalTypeLabels,
+                artAsset: snapshot.data,
+              ),
+            ),
           );
         },
       ),
@@ -255,6 +285,7 @@ class _FullCardContents extends StatelessWidget {
     required this.effectKeyPrefix,
     required this.footer,
     required this.additionalTypeLabels,
+    required this.artAsset,
   });
 
   final CardDef card;
@@ -262,11 +293,16 @@ class _FullCardContents extends StatelessWidget {
   final String? effectKeyPrefix;
   final Widget? footer;
   final List<String> additionalTypeLabels;
+  final String? artAsset;
 
   @override
   Widget build(BuildContext context) {
     final presentation = cardFramePresentation(card);
     final labels = [presentation.typeLabel, ...additionalTypeLabels];
+    // 아트가 없는 카드는 그림이 만들던 시각적 여백도 필요 없다. 4dp는 제목·유형·
+    // 규칙 상자를 구분하는 최소 간격이고, 세 곳에서 8dp 대신 쓰면 카드당 12dp를
+    // 더 돌려준다. 아트가 있으면 목업의 원래 8dp 간격을 유지한다.
+    final sectionGap = artAsset == null ? 4.0 : 8.0;
 
     return Column(
       key: ValueKey('card-frame-full-${card.id}'),
@@ -293,7 +329,7 @@ class _FullCardContents extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: sectionGap),
         Wrap(
           key: ValueKey('card-type-ribbon-${card.id}'),
           alignment: WrapAlignment.center,
@@ -304,16 +340,22 @@ class _FullCardContents extends StatelessWidget {
               _TypeRibbon(label: label, color: presentation.typeColor),
           ],
         ),
-        const SizedBox(height: 8),
-        CardArtSlot(card: card, color: presentation.typeColor),
-        const SizedBox(height: 8),
+        if (artAsset case final asset?) ...[
+          const SizedBox(height: 8),
+          CardArtSlot(
+            cardId: card.id,
+            color: presentation.typeColor,
+            asset: asset,
+          ),
+        ],
+        SizedBox(height: sectionGap),
         _RulesBox(
           card: card,
           labels: effectLabels,
           effectKeyPrefix: effectKeyPrefix,
         ),
         if (footer case final footer?) ...[
-          const SizedBox(height: 8),
+          SizedBox(height: sectionGap),
           DefaultTextStyle.merge(
             style: const TextStyle(
               color: _CardFrameColors.title,
@@ -390,40 +432,37 @@ class _TypeRibbon extends StatelessWidget {
 }
 
 class CardArtSlot extends StatelessWidget {
-  const CardArtSlot({super.key, required this.card, required this.color});
+  const CardArtSlot({
+    super.key,
+    required this.cardId,
+    required this.color,
+    required this.asset,
+  });
 
-  final CardDef card;
+  final String cardId;
   final Color color;
+  final String asset;
 
   @override
   Widget build(BuildContext context) {
-    final asset = cardArtAssetFor(card.id);
     return AspectRatio(
-      key: ValueKey('card-art-${card.id}'),
-      aspectRatio: 2.15,
+      key: ValueKey('card-art-$cardId'),
+      // 2.15:1은 248dp 전체 프레임에서 약 105dp를 쓰는 목업의 가로 아트
+      // 비율이다. asset이 없으면 슬롯을 아예 만들지 않아 그 105dp와 여백을
+      // 돌려주므로, 세 후보를 한 화면에서 비교할 수 있다.
+      aspectRatio: cardArtAspectRatio,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(6),
-        child: asset == null
-            ? DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      color.withValues(alpha: 0.42),
-                      _CardFrameColors.artShadow,
-                    ],
-                  ),
-                  border: Border.all(color: color.withValues(alpha: 0.72)),
-                ),
-                child: Icon(
-                  Icons.auto_awesome_outlined,
-                  color: _CardFrameColors.placeholder.withValues(alpha: 0.8),
-                  size: 32,
-                  semanticLabel: '카드 그림 자리',
-                ),
-              )
-            : Image.asset(asset, fit: BoxFit.cover),
+        child: Image.asset(
+          asset,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => DecoratedBox(
+            decoration: BoxDecoration(
+              color: _CardFrameColors.artShadow,
+              border: Border.all(color: color.withValues(alpha: 0.72)),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -490,7 +529,6 @@ abstract final class _CardFrameColors {
   static const costBorder = Color(0xFFF9E7A7);
   static const costText = Color(0xFF1D1713);
   static const artShadow = Color(0xFF211C2A);
-  static const placeholder = Color(0xFFFFF3D2);
   static const rulePaper = Color(0xFFF3E3BA);
   static const ruleBorder = Color(0xFFB89A61);
   static const ruleText = Color(0xFF35271E);

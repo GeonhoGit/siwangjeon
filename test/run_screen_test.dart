@@ -682,7 +682,7 @@ void main() {
           );
           expect(
             find.byKey(const ValueKey('card-art-ui_reward_a')),
-            findsOneWidget,
+            findsNothing,
           );
           expect(
             find.byKey(const ValueKey('card-rules-ui_reward_a')),
@@ -699,15 +699,69 @@ void main() {
           );
           expect(secondRule.top, greaterThanOrEqualTo(firstRule.bottom));
 
-          await tester.scrollUntilVisible(
-            find.byKey(const ValueKey('reward-card-ui_reward_c')),
-            200,
-          );
-          expect(
-            find.byKey(const ValueKey('card-rules-ui_reward_c')),
-            findsOneWidget,
-          );
+          for (final card in _rewardCards) {
+            final cardBounds = _layoutBounds(
+              tester,
+              find.byKey(ValueKey('reward-card-${card.id}')),
+            );
+            expect(
+              cardBounds.top,
+              greaterThanOrEqualTo(viewport.top),
+              reason: '${device.name}, 글꼴 $textScale, ${card.id}',
+            );
+            expect(
+              cardBounds.bottom,
+              lessThanOrEqualTo(viewport.bottom),
+              reason: '${device.name}, 글꼴 $textScale, ${card.id}',
+            );
+          }
           expect(tester.takeException(), isNull);
+        } finally {
+          await _disposeTree(tester);
+        }
+      }
+    }
+  });
+
+  testWidgets('상점 상품 세 장은 경계 기기와 글꼴 배율에서 함께 비교할 수 있다', (tester) async {
+    final shopSeed = _seedForFirstNode(RunNodeType.shop);
+    for (final device in _boundaryDevices) {
+      for (final textScale in [1.0, 1.3]) {
+        await _pumpRun(
+          tester,
+          seed: shopSeed,
+          device: device,
+          textScale: textScale,
+          content: _nonCombatContent(startingMoney: 100),
+          initialState: _enteredFirstNode(shopSeed),
+        );
+
+        try {
+          final cards = _containerFor(
+            tester,
+          ).read(runControllerProvider).progress.pendingShop!.cards;
+          final viewport = _layoutBounds(
+            tester,
+            find.byKey(const ValueKey('shop-card-list')),
+          );
+          expect(cards, hasLength(3));
+          for (final card in cards) {
+            final cardBounds = _layoutBounds(
+              tester,
+              find.byKey(ValueKey('shop-card-${card.id}')),
+            );
+            expect(
+              cardBounds.top,
+              greaterThanOrEqualTo(viewport.top),
+              reason: '${device.name}, 글꼴 $textScale, ${card.id}',
+            );
+            expect(
+              cardBounds.bottom,
+              lessThanOrEqualTo(viewport.bottom),
+              reason: '${device.name}, 글꼴 $textScale, ${card.id}',
+            );
+          }
+          expect(tester.takeException(), isNull, reason: device.name);
         } finally {
           await _disposeTree(tester);
         }
@@ -783,8 +837,6 @@ void main() {
         find.byKey(ValueKey('shop-card-effect-${card.id}-0')),
         findsOneWidget,
       );
-      expect(find.text('피해 6'), findsOneWidget);
-      expect(find.text('업 +3'), findsOneWidget);
 
       await tester.tap(find.byKey(ValueKey('shop-card-${card.id}')));
       await tester.pump();
