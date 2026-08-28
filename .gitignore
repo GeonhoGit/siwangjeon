@@ -59,12 +59,5 @@ app.*.map.json
 # ── 에이전트 작업 원장 ─────────────────────────────────────
 .superpowers/
 
-# ── AI 에셋 파이프라인 (실행가이드 §11.1) ──
-# 수집 원본과 생성 원본은 저장소에 넣지 않는다. 별도 드라이브에 백업한다.
-art-pipeline/dataset/raw/
-art-pipeline/raw/
-art-pipeline/sheets/
-
 # ── SDXL 파생물 LoRA: 공개 Distribution 전 §4 의무가 생기므로 Git 이력에 넣지 않는다.
 #    외장 백업과 private Release로만 보관한다 (실행가이드 §11.2, MODEL.md).
-art-pipeline/lora/*.safetensors
