@@ -14,17 +14,26 @@
 - 쉼표로 구분한 명사구만 쓴다. 설명 문장, 완결 문장, 이유 설명을 쓰지 않는다.
 - 화풍·시대·작가·품질 관련 단어를 쓰지 않는다.
 - 인물은 자세와 복장, 사물은 형태와 재질을 우선한다.
+- 추상 개념이나 카드 이름의 영어 번역이 아니라, 눈에 보이는 사물·인물·자세·재질만 쓴다.
+  `momentum`, `stamina`, `vow`, `oath`, `energy`, `defense`, `rhythm`, `vitality`, `aura`, `motion`처럼
+  그릴 수 없는 말은 대상 묘사에 쓰지 않는다.
 - 템플릿·네거티브 프롬프트·트리거는 네가 출력하지 않는다.
 - 카드 이름이 담은 고유한 의미와 효과를 중심 대상에 드러낸다. 지옥·탐욕·원한·참회·금식처럼
   카드마다 다른 상징·사물·행동을 고르고, 막연한 방어 인물로 뜻을 지우지 않는다.
 - 여러 카드에 `armored X, defensive stance` 같은 틀에 박힌 조합을 반복하지 않는다. 기본값으로
   warrior, guardian, defender, shield, downward strike, slash를 되풀이하지 말고 카드마다 다른
   구체 명사를 쓴다.
+- 세계관을 알리려고 익숙한 소품을 덧붙이지 않는다. 카드별 효과에서 출발해 인물, 의식 도구,
+  형벌 장치, 장소, 동식물, 복식, 재질 중 서로 다른 구체 대상을 고르고, 같은 명사구·낱말을
+  여러 카드의 기본 장식으로 반복하지 않는다.
+- 입력에 이미 다른 카드에 배정된 명사구 목록이 있으면, 그 목록은 예시가 아니라 예약어다.
+  목록의 명사구를 그대로 다시 쓰지 말고 다른 구체 대상을 고른다. 이 제약은 검증기의 하드 오류이므로,
+  목록의 표현을 다시 출력하면 안 된다.
 - 방어 효과는 부적, 관인의 봉인, 업경대, 저승문, 장막, 연꽃, 염주처럼 저승의 고유한 사물로
   나타낸다. `defensive stance`, `defensive posture`, `shield`, `downward strike`, `downward slash`,
   `slash`는 쓰지 않는다.
 
 출력은 반드시 쉼표로 나눈 **정확히 세 개의 영문 명사구 태그**만 쓴다. 각 태그는 1~3단어만 쓴다.
 문장·설명·동사·마침표를 절대 쓰지 말고, 관사 `A`·`An`·`The`로 시작하지 않는다. 형식 예시는
-`bronze judgment tablet, black gat, raised ink brush`다. `A reaper swinging a hammer.`처럼 문장으로
+`bronze judgment tablet, reed torch, carved wooden gate`다. `A reaper swinging a hammer.`처럼 문장으로
 쓰면 안 된다.

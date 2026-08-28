@@ -130,6 +130,69 @@ class PromptValidationCliTest(unittest.TestCase):
         self.assertIn("card_repeated_words", result.stderr)
         self.assertIn("card_no_comma", result.stderr)
 
+    def test_validate_reports_the_cards_sharing_a_noun_phrase(self) -> None:
+        """반복 표현만 막고 어느 카드끼리 겹치는지 숨기면 프롬프트 교정 근거가 사라진다."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            prompts_path, template_path, negative_path = self._write_inputs(
+                Path(temporary_directory),
+                [
+                    {
+                        "id": "card_bell_a",
+                        "subject": "brass temple bell, folded hemp shroud, cracked stone step",
+                        "prompt": "swjdostyle, brass temple bell, folded hemp shroud, cracked stone step, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_bell_b",
+                        "subject": "brass temple bell, waxed paper talisman, braided straw rope",
+                        "prompt": "swjdostyle, brass temple bell, waxed paper talisman, braided straw rope, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_pebble",
+                        "subject": "jade river pebble, clay incense bowl, painted wooden gate",
+                        "prompt": "swjdostyle, jade river pebble, clay incense bowl, painted wooden gate, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_mirror",
+                        "subject": "copper mirror shard, woven reed mat, dark silk sleeve",
+                        "prompt": "swjdostyle, copper mirror shard, woven reed mat, dark silk sleeve, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                    {
+                        "id": "card_torch",
+                        "subject": "charred pine torch, carved horn cup, silver burial pin",
+                        "prompt": "swjdostyle, charred pine torch, carved horn cup, silver burial pin, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    },
+                ],
+            )
+
+            result = self._validate(prompts_path, template_path, negative_path)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("명사구 'brass temple bell'", result.stderr)
+        self.assertIn("낱말 'brass'", result.stderr)
+        self.assertIn("card_bell_a", result.stderr)
+        self.assertIn("card_bell_b", result.stderr)
+
+    def test_validate_rejects_an_abstract_noun_as_a_subject(self) -> None:
+        """카드 이름을 영어로 옮긴 상태어는 실제 이미지 대상으로 쓸 수 없다."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            prompts_path, template_path, negative_path = self._write_inputs(
+                Path(temporary_directory),
+                [
+                    {
+                        "id": "card_abstract",
+                        "subject": "hellfire momentum, lacquered gate, bronze tablet",
+                        "prompt": "swjdostyle, hellfire momentum, lacquered gate, bronze tablet, centered composition, single subject, plain dark background, deep vermilion, jade green, ink black, muted gold, highly detailed, traditional pigment texture",
+                    }
+                ],
+            )
+
+            result = self._validate(prompts_path, template_path, negative_path)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("card_abstract", result.stderr)
+        self.assertIn("추상 명사", result.stderr)
+        self.assertIn("momentum", result.stderr)
+
     def test_validate_blocks_representative_style_era_artist_and_quality_terms(self) -> None:
         """한두 예시만 막으면 LLM이 다른 금지 범주 표현을 그대로 통과시킨다."""
         with tempfile.TemporaryDirectory() as temporary_directory:
