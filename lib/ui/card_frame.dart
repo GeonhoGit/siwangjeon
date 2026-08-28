@@ -285,7 +285,7 @@ class _CompactCardContents extends StatelessWidget {
   }
 }
 
-const _verticalNameRibbonWidth = 36.0;
+const _typeColorStripeWidth = 36.0;
 const _artlessIdentityAreaHeight = 46.0;
 const _typeMedallionSpace = 22.0;
 
@@ -312,10 +312,10 @@ class _FullCardContents extends StatelessWidget {
     return Stack(
       key: ValueKey('card-frame-full-${card.id}'),
       children: [
-        // 세로 이름 띠가 차지하는 폭만 제외하고 아트가 프레임 가장자리까지
+        // 유형색 띠가 차지하는 폭만 제외하고 아트가 프레임 가장자리까지
         // 닿는다. 아트가 없을 때도 같은 구조를 유지하고 이 칸의 높이만 줄인다.
         Padding(
-          padding: const EdgeInsets.only(left: _verticalNameRibbonWidth),
+          padding: const EdgeInsets.only(left: _typeColorStripeWidth),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -355,12 +355,12 @@ class _FullCardContents extends StatelessWidget {
           left: 0,
           top: 0,
           bottom: 0,
-          width: _verticalNameRibbonWidth,
-          child: _VerticalNameRibbon(card: card, color: presentation.typeColor),
+          width: _typeColorStripeWidth,
+          child: _TypeColorStripe(card: card, color: presentation.typeColor),
         ),
         Positioned(
           top: 4,
-          left: _verticalNameRibbonWidth + 4,
+          left: _typeColorStripeWidth + 4,
           child: _CostBadge(
             card: card,
             color: presentation.typeColor,
@@ -378,6 +378,13 @@ class _FullCardContents extends StatelessWidget {
           ),
         ),
         Positioned(
+          top: 7,
+          left: _typeColorStripeWidth + 44,
+          right: 44,
+          height: 30,
+          child: _HorizontalCardName(card: card),
+        ),
+        Positioned(
           left: 0,
           right: 0,
           bottom: 3,
@@ -388,44 +395,56 @@ class _FullCardContents extends StatelessWidget {
   }
 }
 
-class _VerticalNameRibbon extends StatelessWidget {
-  const _VerticalNameRibbon({required this.card, required this.color});
+class _TypeColorStripe extends StatelessWidget {
+  const _TypeColorStripe({required this.card, required this.color});
 
   final CardDef card;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final characters = card.name.runes
-        .map(String.fromCharCode)
-        .where((character) => character.trim().isNotEmpty)
-        .toList();
+    return ColoredBox(
+      key: ValueKey('card-type-stripe-${card.id}'),
+      color: color,
+    );
+  }
+}
+
+class _HorizontalCardName extends StatelessWidget {
+  const _HorizontalCardName({required this.card});
+
+  final CardDef card;
+
+  @override
+  Widget build(BuildContext context) {
     return Semantics(
       label: card.name,
       excludeSemantics: true,
-      child: ColoredBox(
-        key: ValueKey('card-name-${card.id}'),
-        color: color,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: _CardFrameColors.paperLight.withValues(alpha: 0.94),
+          border: const Border(
+            bottom: BorderSide(color: _CardFrameColors.gold, width: 0.8),
+          ),
+        ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.topCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final character in characters)
-                  Text(
-                    character,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: _CardFrameColors.title,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      height: 1.1,
-                    ),
-                  ),
-              ],
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                key: ValueKey('card-name-${card.id}'),
+                card.name,
+                maxLines: 1,
+                softWrap: false,
+                style: const TextStyle(
+                  color: _CardFrameColors.title,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
         ),
