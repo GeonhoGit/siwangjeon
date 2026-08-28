@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "purpose": "카드 아트 후보 생성의 재현성 기준",
+  "seed": 20260826,
+  "candidate_count_per_card": 8,
+  "width": 1152,
+  "height": 896,
+  "steps": 28,
+  "cfg": 6.0,
+  "sampler_name": "dpmpp_2m",
+  "scheduler": "karras",
+  "lora_strength": 0.8
+}

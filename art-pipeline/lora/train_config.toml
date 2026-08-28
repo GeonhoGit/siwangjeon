@@ -1,0 +1,42 @@
+# kohya_ss SDXL 스타일 LoRA 설정 템플릿.
+# 라이선스 확인을 마친 사람이 베이스 모델 경로만 채운 뒤 사용한다.
+
+# 데이터와 출력
+pretrained_model_name_or_path = "REPLACE_WITH_LICENSE_APPROVED_SDXL_CHECKPOINT"
+train_data_dir                = "art-pipeline/dataset/train"
+output_dir                    = "art-pipeline/lora"
+output_name                   = "swjdostyle"
+save_model_as                 = "safetensors"
+resolution                    = "1024,1024"
+enable_bucket                 = true
+bucket_reso_steps             = 64
+min_bucket_reso               = 640
+max_bucket_reso               = 1536
+
+# 네트워크
+network_module                = "networks.lora"
+network_dim                   = 32
+network_alpha                 = 16
+
+# 학습률
+learning_rate                 = 1e-4
+unet_lr                       = 1e-4
+text_encoder_lr               = 5e-5
+lr_scheduler                  = "cosine_with_restarts"
+lr_warmup_steps               = 100
+
+# RTX 5080 16GB 기준으로 시작한다. VRAM 여유를 확인한 뒤에만 2로 올린다.
+optimizer_type                = "AdamW8bit"
+mixed_precision               = "bf16"
+gradient_checkpointing        = true
+train_batch_size              = 1
+
+# 반복과 재현성
+num_repeats                   = 10
+max_train_epochs              = 10
+save_every_n_epochs           = 1
+seed                          = 20260826
+
+# 품질
+noise_offset                  = 0.05
+min_snr_gamma                 = 5
