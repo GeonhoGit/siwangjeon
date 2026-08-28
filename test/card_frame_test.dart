@@ -32,6 +32,24 @@ const _powerCard = CardDef(
   effects: [BlockEffect(2)],
 );
 
+const _purificationCard = CardDef(
+  id: 'frame_purification',
+  name: '대정화',
+  type: CardType.skill,
+  cost: 1,
+  targeted: false,
+  effects: [BlockEffect(3)],
+);
+
+const _confessionCard = CardDef(
+  id: 'frame_confession',
+  name: '고해',
+  type: CardType.power,
+  cost: 1,
+  targeted: false,
+  effects: [BlockEffect(2)],
+);
+
 Future<String?> _noCardArt(AssetBundle assetBundle, String cardId) async =>
     null;
 
@@ -42,17 +60,21 @@ Widget _frameHarness({
   required double width,
   required CardDef card,
   CardArtResolver artResolver = _noCardArt,
+  double textScale = 1.0,
 }) {
   return MaterialApp(
-    home: Scaffold(
-      body: Center(
-        child: SizedBox(
-          width: width,
-          child: CardFrame(
-            card: card,
-            effectLabels: const ['피해 6', '업 +2', '원한 1'],
-            additionalTypeLabels: const ['광역'],
-            artResolver: artResolver,
+    home: MediaQuery(
+      data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+      child: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: width,
+            child: CardFrame(
+              card: card,
+              effectLabels: const ['피해 6', '업 +2', '원한 1'],
+              additionalTypeLabels: const ['광역'],
+              artResolver: artResolver,
+            ),
           ),
         ),
       ),
@@ -72,12 +94,13 @@ void main() {
     );
     expect(
       cardFramePresentation(_powerCard).typeColor,
-      const Color(0xFF3F7A46),
+      const Color(0xFFD6A84A),
+      reason: '시왕은 이름 띠와 비용 배지까지 금색으로 통일한다.',
     );
     expect(
       cardFramePresentation(_powerCard).frameColor,
       const Color(0xFFD6A84A),
-      reason: '시왕은 유형 색을 지우지 않고 금색 테두리로만 강조한다.',
+      reason: '시왕 금색은 프레젠테이션 진입점에서만 정한다.',
     );
   });
 
@@ -126,6 +149,15 @@ void main() {
       find.byKey(const ValueKey('card-type-ribbon-frame_attack')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('card-cost-shield-frame_attack')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('card-frame-ornament-frame_attack')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('card-type-medallion')), findsOneWidget);
     expect(find.text('공격'), findsOneWidget);
     expect(find.text('광역'), findsOneWidget);
     expect(find.byKey(const ValueKey('card-art-frame_attack')), findsNothing);
@@ -139,7 +171,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('아트 asset이 있으면 2.15:1 슬롯을 넣어 전체 프레임을 키운다', (tester) async {
+  testWidgets('긴 이름은 글자를 세로로 쌓고 1.0×와 1.3×에서 띠를 넘지 않는다', (tester) async {
+    final names = [
+      (card: _attackCard, characters: const ['원', '한', '의', '칼', '날']),
+      (card: _purificationCard, characters: const ['대', '정', '화']),
+      (card: _confessionCard, characters: const ['고', '해']),
+    ];
+    for (final textScale in [1.0, 1.3]) {
+      for (final name in names) {
+        await tester.pumpWidget(
+          _frameHarness(width: 248, card: name.card, textScale: textScale),
+        );
+        await tester.pump();
+
+        final ribbon = find.byKey(ValueKey('card-name-${name.card.id}'));
+        final ribbonBounds = tester.getRect(ribbon);
+        final letters = <Finder>[];
+        for (final character in name.characters) {
+          final letter = find.descendant(
+            of: ribbon,
+            matching: find.text(character),
+          );
+          expect(letter, findsOneWidget);
+          final bounds = tester.getRect(letter);
+          expect(bounds.left, greaterThanOrEqualTo(ribbonBounds.left));
+          expect(bounds.right, lessThanOrEqualTo(ribbonBounds.right));
+          expect(bounds.top, greaterThanOrEqualTo(ribbonBounds.top));
+          expect(bounds.bottom, lessThanOrEqualTo(ribbonBounds.bottom));
+          letters.add(letter);
+        }
+        for (var index = 1; index < letters.length; index++) {
+          expect(
+            tester.getRect(letters[index - 1]).top,
+            lessThan(tester.getRect(letters[index]).top),
+          );
+        }
+        expect(
+          find.descendant(of: ribbon, matching: find.byType(RotatedBox)),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      }
+    }
+  });
+
+  testWidgets('아트 asset이 있으면 세로 슬롯을 넣어 전체 프레임을 키운다', (tester) async {
     await tester.pumpWidget(_frameHarness(width: 248, card: _attackCard));
     await tester.pump();
     final artlessHeight = tester
@@ -163,6 +239,7 @@ void main() {
         .height;
     expect(art.aspectRatio, cardArtAspectRatio);
     expect(artHeight - artlessHeight, greaterThan(100));
+    expect(artHeight / 248, closeTo(4.4 / 3, 0.12));
     expect(tester.takeException(), isNull);
   });
 }
